@@ -24,27 +24,50 @@ The following acceptance critera is defined to address this dilemma:
 **Chosen Difficulty**: Hard
 
 **Dataset Configuration**:
-Data will be split at the patient level into training, validation and testing.
+The dataset has been preprocessed and contains 2 classes: Alzheimer's Disease (AD) and Cognitive Normal (CN).
+The dataset has been preprocessed and contains brain scans that are 2D slices.
+
+Filenames in the dataset are <patient_id>_<slice_id>.jpeg. The patient id will be used to split data and verify there is no leakage between the preprocessed training and testing sets.
+
+Normalisation and augmentations will be performed only on the training dataset to prevent overfitting and make the model robust and generalisable.
 
 **Model Architecture**:
 The ConvNeXt architecture was introduced by Meta AI and UC Berkley. It modernises a standard ResNet model towards a Vision Transformer model, however is constructed entirely from standard ConvNet modules.
 
 **Course Concepts**:
 - Data splitting and preventing data leakage
-- CNNs
+- Data processing, including normalisation and augmentation on training set
+- Training and Validation of model
+- CNNs, ResNets and Transformers
 - Testing/evaluation of model performance
-
- proposed dataset configuration, model architecture,
-chosen difficulty band, and how course concepts and literature support the choices.
 
 ## Preliminary Feasibility Evidence
 
+**Data Audit**:
+The data available on Rangpur has already been split into training and testing sets. This split was analysed (using `verify_leakge.py`) and there is no data leakage.
+The training set will be further split into training and validation sets. Split will be done by patient ID to ensure no data leakage.
 
+The training set contains 1076 patients. This will be split so that the training set contains 80%: 860 patients. The validation set will then have 216 patients. 
+The testing set contains 450 patients.
+Since the sample size is quite small, augmentations will be performed, only on the training dataset.
+
+The dataset contains 2D slice images. This can be loaded into a tensor with 3 channels (to match the input for ConvNeXt). The images are grayscale, so the same value will be duplicated three times.
+
+Image sizes were found to be 256x240 pixels, using `file ADNI/AD_NC/train/AD/218391_78.jpeg`. This size will be kept to ensure that resizing doesn't remove important features or distort the image.
+
+### Baseline smoke-test experiment
+A baseline experiment was conducted using a simple CNN architecture. --------------------------------------finish saying what happened
  initial data audit, baseline smoke-test experiment, or
 measured resource estimate. A fully trained final model is not required
 
 ## Risks, Budget and Fallback
 
+**Risks**:
+- Data leakage between training sets
+- Class imbalance may cause bias towards majority class
+
+**Computing Budget**:
+Experiements and training will be performed on Rangpur GPU nodes. Training will target completion in 24hours.
 
 **Fallback Model**: 
 Since ConvNeXt is build on a ResNet Architecture, a suitable fallback would be ResNet-18 or ResNet-50.
@@ -56,11 +79,3 @@ and a workable fallback.
 - https://www.sciencedirect.com/science/article/pii/S2405844024014993
 - https://share.gemini.google/OlLE9OZGsMfJ
 
-# questions
-- referencing - does it need to be apa
-- is acceptance criteria fine, does it need more detail or justification
-- model architecture is convnext, do i need to describe it
-- what does course concepts expect
-- what does dataset config mean
-- what does budget mean
-- what experiments should we be running?
