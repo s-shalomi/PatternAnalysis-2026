@@ -56,9 +56,10 @@ The dataset contains 2D slice images. This can be loaded into a tensor with 3 ch
 Image sizes were found to be 256x240 pixels, using `file ADNI/AD_NC/train/AD/218391_78.jpeg`. This size will be kept to ensure that resizing doesn't remove important features or distort the image.
 
 ### Baseline smoke-test experiment
-A baseline experiment was conducted using a simple CNN architecture. --------------------------------------finish saying what happened
- initial data audit, baseline smoke-test experiment, or
-measured resource estimate. A fully trained final model is not required
+A baseline experiment was conducted using a simple CNN architecture. The model was trained for 10 epochs.
+Training and validation over 10 epochs, with validation every second epoch took 167 seconds on the Rangpur cluster.
+Test accuracy with the CNN architecture was only 70%.
+
 
 ## Risks, Budget and Fallback
 
@@ -72,8 +73,10 @@ Experiements and training will be performed on Rangpur GPU nodes. Training will 
 **Fallback Model**: 
 Since ConvNeXt is build on a ResNet Architecture, a suitable fallback would be ResNet-18 or ResNet-50.
 
-Key technical risks, computing budget, the next planned experiment,
-and a workable fallback.
+**Next planned experiment**:
+Next steps are to create the ConvNext model and run the current training, testing and validation procedures on it.
+Based on the results, each hyperparameter will be tuned.
+The model's detection of false positives and negatives will also be examined.
 
 ## References
 - https://www.sciencedirect.com/science/article/pii/S2405844024014993
