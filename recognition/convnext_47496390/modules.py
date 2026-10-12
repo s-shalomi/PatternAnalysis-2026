@@ -30,15 +30,13 @@ class BaselineCNN(nn.Module):
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2)
+            # reduces feature maps:  (B, 128, 8, 8)
+            # gives classifier a fixed size input
+            nn.AdaptiveAvgPool2d((8, 8))
         )
-
-        # reduces feature maps:  (B, 128, 8, 8)
-        # gives classifier a fixed size input
-        self.pool = nn.AdaptiveAvgPool2d((8, 8))
-
-       # classifier
-       self.classifier = nn.Sequential(
+        
+        # classifier
+        self.classifier = nn.Sequential(
             nn.Flatten(), # # (B, 128, 8, 8) -> (B, 8192)
             nn.Linear(128 * 8 * 8, 128), # 128 feature maps from conv, each map contributes 8 values -- 128 outputs
             nn.ReLU(),
@@ -50,5 +48,4 @@ class BaselineCNN(nn.Module):
         x = self.block1(x)
         x = self.block2(x)
         x = self.block3(x)
-        x = self.pool(x)
         return self.classifier(x)

@@ -1,9 +1,10 @@
 import torch
-import torchvision
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import classification_report, confusion_matrix
-
+import matplotlib.pyplot as plt
+import os
+import time
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -16,7 +17,7 @@ if not torch.cuda.is_available():
 from modules import BaselineCNN
 from dataset import build_dataloaders
 
-learning_rate = 0.001
+learning_rate = 1e-4
 batch_size = 32
 num_epochs = 10
 
@@ -39,7 +40,17 @@ def train_test_baseline():
     val_losses = []
     val_accuracies = []
 
+    # for plotting
+    val_epochs = []
+
+    best_val_accuracy = 0
+
     print("Training baseline model...")
+
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+    
+    start_time = time.perf_counter()
 
     for epoch in range(num_epochs):
         model.train()
@@ -79,7 +90,7 @@ def train_test_baseline():
             model.eval()
             with torch.no_grad():
                 val_correct = 0
-                val_loss = 0
+                val_running_loss = 0
                 val_total = 0
                 for images, labels in val_loader:
                     images = images.to(device)
@@ -88,11 +99,11 @@ def train_test_baseline():
                     outputs = model(images)
                     loss = criterion(outputs, labels)
 
-                    val_loss += loss.item()
+                    val_running_loss += loss.item()
 
                     _, predicted = torch.max(outputs.data, 1)
-                    total += labels.size(0)
-                    correct += (predicted == labels).sum().item()
+                    val_total += labels.size(0)
+                    val_correct += (predicted == labels).sum().item()
                 
                 val_loss = (val_running_loss / len(val_loader))
                 val_accuracy = (100.0 * val_correct / val_total)
@@ -100,14 +111,32 @@ def train_test_baseline():
                 val_accuracies.append(val_accuracy)
                 val_losses.append(val_loss)
 
+                if val_accuracy > best_val_accuracy:
+                    best_val_accuracy = val_accuracy
+
+                    torch.save(model.state_dict(), "baseline_best.pth")
+
                 print(
                     f"Epoch [{epoch + 1}/{num_epochs}] "
-                    f"Val Loss: {val_epoch_loss:.4f}, "
-                    f"Val Accuracy: {val_epoch_accuracy:.2f}%"
+                    f"Val Loss: {val_loss:.4f}, "
+                    f"Val Accuracy: {val_accuracy:.2f}%"
                 )
+            
+            val_epochs.append(epoch + 1) # for plotting
+
+        
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+        
+    end_time = time.perf_counter() 
+    print(f"Total training and validation time: {end_time - start_time:.2f} seconds")
 
     # Testing
     print("Testing model")
+
+    # load best model
+    model.load_state_dict(torch.load("baseline_best.pth", map_location=device))
+
     model.eval()
 
     test_loss = 0.0
@@ -116,6 +145,9 @@ def train_test_baseline():
 
     all_labels = []
     all_predictions = []
+    all_probabilities = []  # needed for ROC curve
+    misclassified_samples = [] # for false positives
+    
 
     with torch.no_grad():
         for images, labels in test_loader:
@@ -129,13 +161,34 @@ def train_test_baseline():
             test_loss += loss.item()
 
             # Get predicted classes
-            predictions = outputs.argmax(dim=1)
+            predictions = outputs.argmax(dim=1) # predicted class index for each sample
+            probs = torch.softmax(outputs, dim=1) # probability distribution across all classes for each sample
+            confidences = probs.max(dim=1).values #  probability assigned to the predicted class for each sample
 
             total += labels.size(0)
             correct += (predictions == labels).sum().item()
 
             all_labels.extend(labels.cpu().tolist())
             all_predictions.extend(predictions.cpu().tolist())
+            all_probabilities.extend(probs.cpu().tolist())
+
+            # Collect misclassified samples (store on CPU to save GPU memory)
+            incorrect_mask = predictions != labels
+            if incorrect_mask.any():
+                bad_images = images[incorrect_mask].cpu()
+                bad_preds = predictions[incorrect_mask].cpu().tolist()
+                bad_trues = labels[incorrect_mask].cpu().tolist()
+                bad_confs = confidences[incorrect_mask].cpu().tolist()
+
+                for i in range(len(bad_preds)):
+                    # Cap collection at 16 to avoid bloating RAM
+                    if len(misclassified_samples) < 16:
+                        misclassified_samples.append({
+                            "image": bad_images[i],
+                            "pred": bad_preds[i],
+                            "true": bad_trues[i],
+                            "confidence": bad_confs[i],
+                        })
 
     # Calculate metrics
     test_loss /= len(test_loader)
@@ -159,7 +212,8 @@ def train_test_baseline():
     print("Confusion Matrix:")
     print(confusion_matrix(all_labels, all_predictions, labels=[0, 1]))
 
-
+    return (train_losses, train_accuracies, val_losses, val_accuracies, test_loss, test_accuracy, 
+        val_epochs, all_labels, all_predictions, all_probabilities, misclassified_samples)
 
 
 if __name__ == "__main__":
