@@ -19,7 +19,7 @@ from dataset import build_dataloaders
 
 CLASS_NAMES = ["NC", "AD"]
 learning_rate = 1e-4
-batch_size = 32
+batch_size = 64
 num_epochs = 40
 weight_decay = 1e-2
 
