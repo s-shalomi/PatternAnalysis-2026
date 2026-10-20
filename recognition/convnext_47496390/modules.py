@@ -220,5 +220,5 @@ def convnext_tiny(num_classes: int = 1000, in_chans: int = 3, **kwargs):
         num_classes=num_classes,
         depths=[3, 3, 9, 3],
         dims=[96, 192, 384, 768],
-        drop_path_rate=kwargs.get("drop_path_rate", 0.1),
+        drop_path_rate=kwargs.get("drop_path_rate", 0.2),
     )

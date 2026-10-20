@@ -184,7 +184,7 @@ def test(model, loader, criterion, expected_channels):
 def pipeline(model_name="convnext"):
     model, expected_channels, rgb_gray = create_model(model_name)
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-6)
 
