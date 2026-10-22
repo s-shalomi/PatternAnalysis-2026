@@ -20,8 +20,8 @@ from dataset import build_dataloaders
 CLASS_NAMES = ["NC", "AD"]
 learning_rate = 1e-4
 batch_size = 64
-num_epochs = 40
-weight_decay = 1e-2
+num_epochs = 300
+weight_decay = 0.05
 
 
 def create_model(model_name, num_classes=2):

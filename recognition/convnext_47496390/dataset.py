@@ -52,7 +52,9 @@ def get_transforms(for_rgb_backbone=True):
             degrees=0,
             translate=(0.03, 0.03)
         ),
+        transforms.RandomResizedCrop(size=(256, 240), scale=(0.8, 1.0)),
         transforms.ToTensor(),
+        transforms.RandomErasing(p=0.25),
     ]
 
     val_ops = [
