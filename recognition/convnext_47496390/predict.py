@@ -290,38 +290,38 @@ def plot_misclassified_grid(
 
 
 if __name__ == "__main__":
-    print("---------CNN--------------")
-    (train_losses, train_accuracies, val_losses, 
-            val_accuracies, test_loss, test_accuracy, 
-            val_epochs, all_labels, all_predictions, 
-            all_probabilities, misclassified_samples) = pipeline(model_name="cnn")
-
-    plot_training_and_test_curves(
-        train_losses, train_accuracies, val_losses, val_accuracies, val_epochs, 
-        test_loss=test_loss, test_accuracy=test_accuracy, save_path="cnn_training_test_curves.png")
-
-    plot_confusion_matrix(
-      y_true=all_labels,
-      y_pred=all_predictions,
-      class_names=["NC", "AD"],
-      save_path="cnn_test_cm.png",
-    )
-
-    plot_roc_curve(
-      y_true=all_labels,
-      y_scores=[p[1] for p in all_probabilities],
-      pos_label=1,
-      save_path="cnn_test_roc.png",
-    )
-
-    plot_misclassified_grid(
-        misclassified_samples=misclassified_samples,
-        class_names=["NC", "AD"],
-        max_samples=8,
-        ncols=4,
-        save_path="cnn_misclassified_slices.png",
-    )
-
+#    print("---------CNN--------------")
+#    (train_losses, train_accuracies, val_losses, 
+#            val_accuracies, test_loss, test_accuracy, 
+#            val_epochs, all_labels, all_predictions, 
+#            all_probabilities, misclassified_samples) = pipeline(model_name="cnn")
+#
+#    plot_training_and_test_curves(
+#        train_losses, train_accuracies, val_losses, val_accuracies, val_epochs, 
+#        test_loss=test_loss, test_accuracy=test_accuracy, save_path="cnn_training_test_curves.png")
+#
+#    plot_confusion_matrix(
+#      y_true=all_labels,
+#      y_pred=all_predictions,
+#      class_names=["NC", "AD"],
+#      save_path="cnn_test_cm.png",
+#    )
+#
+#    plot_roc_curve(
+#      y_true=all_labels,
+#      y_scores=[p[1] for p in all_probabilities],
+#      pos_label=1,
+#      save_path="cnn_test_roc.png",
+#    )
+#
+#    plot_misclassified_grid(
+#        misclassified_samples=misclassified_samples,
+#        class_names=["NC", "AD"],
+#        max_samples=8,
+#        ncols=4,
+#        save_path="cnn_misclassified_slices.png",
+#    )
+#
     print("---------CONVNEXT--------------")
     (train_losses, train_accuracies, val_losses, 
             val_accuracies, test_loss, test_accuracy, 

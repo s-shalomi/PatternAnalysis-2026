@@ -20,8 +20,11 @@ from dataset import build_dataloaders
 CLASS_NAMES = ["NC", "AD"]
 learning_rate = 1e-4
 batch_size = 64
-num_epochs = 300
+num_epochs = 100
 weight_decay = 0.05
+
+warmup_epochs = 3
+min_lr = 1e-6
 
 
 def create_model(model_name, num_classes=2):
@@ -186,7 +189,27 @@ def pipeline(model_name="convnext"):
 
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-6)
+
+    warmup_scheduler = optim.lr_scheduler.LinearLR(
+        optimizer,
+        start_factor=0.01,  # Start at 1% of the target LR
+        end_factor=1.0,     # Reach the target LR
+        total_iters=warmup_epochs
+    )
+
+    cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=num_epochs - warmup_epochs,
+        eta_min=min_lr
+    )
+
+    # Combine the two phases
+    scheduler = optim.lr_scheduler.SequentialLR(
+        optimizer,
+        schedulers=[warmup_scheduler, cosine_scheduler],
+        milestones=[warmup_epochs]
+    )
+    #scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-6)
 
     train_loader, val_loader, test_loader = build_dataloaders(
         rgb_gray,  # grayscale or rgb depending on model

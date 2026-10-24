@@ -44,15 +44,8 @@ def get_transforms(for_rgb_backbone=True):
     """
     train_ops = [
         transforms.RandomRotation(degrees=5),
-        transforms.ColorJitter(
-            brightness=0.1,
-            contrast=0.1
-        ),
-        transforms.RandomAffine(
-            degrees=0,
-            translate=(0.03, 0.03)
-        ),
-        transforms.RandomResizedCrop(size=(256, 240), scale=(0.8, 1.0)),
+        transforms.ColorJitter(brightness=0.1,contrast=0.1),
+        transforms.RandomAffine(degrees=0, translate=(0.05, 0.05),scale=(0.95, 1.05)),
         transforms.ToTensor(),
         transforms.RandomErasing(p=0.25),
     ]
