@@ -1,14 +1,181 @@
-from train import train_test_baseline, pipeline
+"""
+Shows example usage of trained model by loading saved model weights, 
+runs inference on test cases.
+Prints test accuracy, classification report, confusion matrix, and AUROC.
+Produces visualisations of:
+    - Test Confusion Matrix ({model}_test_cm.png)
+    - Receiver Operating Characteristic (ROC) curve ({model}_test_roc.png)
+    - Failure Case Autopsy Grid ({model}_misclassified_slices.png)
+    - Successful Diagnostic Sample Predictions ({model}_sample_predictions.png)
+"""
+
+from modules import BaselineCNN, convnext_tiny
+from dataset import build_dataloaders
+
 import os
+import argparse
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import (
-    auc,
-    classification_report,
-    confusion_matrix,
-    roc_curve,
-)
+
 import torch
+import torch.nn as nn
+from sklearn.metrics import confusion_matrix, classification_report, roc_curve, auc, roc_auc_score
+
+
+CLASS_NAMES = ["NC", "AD"]
+
+def get_device() -> torch.device:
+    """Returns CUDA device if available, else CPU."""
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")
+
+def load_trained_model(model_name: str, weights_path: str, device: torch.device) -> nn.Module:
+    """
+    Instantiates the model and loads pre-trained weights.
+
+    Args:
+        model_name (str): 'convnext' or 'cnn'.
+        weights_path (str): File path to the saved .pth weights.
+        device (torch.device): Device to map model weights onto.
+    Returns:
+        nn.Module: Model in eval mode on target device.
+    """
+    model_name = model_name.lower()
+    if model_name == "convnext":
+        model = convnext_tiny(num_classes=2, in_chans=1)
+    elif model_name == "cnn":
+        model = BaselineCNN(num_classes=2, in_channels=1)
+    else:
+        raise ValueError(f"Unknown model name '{model_name}'. Choose 'convnext' or 'cnn'.")
+    
+    if not os.path.exists(weights_path):
+        raise FileNotFoundError(
+            f"Weights file '{weights_path}' was not found!\n"
+            f"Please train the model first by running: python train.py --model {model_name}"
+        )
+
+    print(f"Loading weights from: {weights_path}")
+    state_dict = torch.load(weights_path, map_location=device)
+    model.load_state_dict(state_dict)
+    model.to(device)
+    model.eval()
+    return model
+
+def run_inference(model: nn.Module, test_loader, device: torch.device):
+    """
+    Runs evaluation on the test set and gathers predictions, confidences, and autopsy samples.
+    """
+    all_labels = []
+    all_predictions = []
+    all_probabilities = []
+    misclassified_samples = []
+    correct_samples = []
+
+    criterion = nn.CrossEntropyLoss()
+    running_loss = 0.0
+    correct = 0
+    total = 0
+
+    print("Running inference across test set")
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images = images.to(device, non_blocking=True)
+            labels = labels.to(device, dtype=torch.long, non_blocking=True)
+
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+
+            batch_size = labels.size(0)
+            running_loss += loss.item() * batch_size
+
+            probs = torch.softmax(outputs, dim=1)
+            predictions = outputs.argmax(dim=1)
+            confidences = probs.max(dim=1).values
+
+            correct += (predictions == labels).sum().item()
+            total += batch_size
+
+            all_labels.extend(labels.cpu().tolist())
+            all_predictions.extend(predictions.cpu().tolist())
+            all_probabilities.extend(probs.cpu().tolist())
+
+            # Gather misclassified cases
+            incorrect_mask = (predictions != labels).cpu()
+            if incorrect_mask.any():
+                bad_imgs = images[incorrect_mask].cpu()
+                bad_preds = predictions[incorrect_mask].cpu().tolist()
+                bad_trues = labels[incorrect_mask].cpu().tolist()
+                bad_confs = confidences[incorrect_mask].cpu().tolist()
+                for i in range(len(bad_preds)):
+                    if len(misclassified_samples) < 16:
+                        misclassified_samples.append({
+                            "image": bad_imgs[i],
+                            "pred": bad_preds[i],
+                            "true": bad_trues[i],
+                            "confidence": bad_confs[i],
+                        })
+
+            # Gather correctly classified samples
+            correct_mask = (predictions == labels).cpu()
+            if correct_mask.any():
+                good_imgs = images[correct_mask].cpu()
+                good_preds = predictions[correct_mask].cpu().tolist()
+                good_trues = labels[correct_mask].cpu().tolist()
+                good_confs = confidences[correct_mask].cpu().tolist()
+                for i in range(len(good_preds)):
+                    if len(correct_samples) < 16:
+                        correct_samples.append({
+                            "image": good_imgs[i],
+                            "pred": good_preds[i],
+                            "true": good_trues[i],
+                            "confidence": good_confs[i],
+                        })
+    test_loss = running_loss / total
+    test_accuracy = 100.0 * correct / total
+
+    # Compute AUROC
+    ad_scores = [p[1] for p in all_probabilities]
+    try:
+        test_auroc = roc_auc_score(all_labels, ad_scores)
+    except Exception as e:
+        print(f"Warning: AUROC calculation failed: {e}")
+        test_auroc = float("nan")
+
+
+    print("\n" + "=" * 55)
+    print("--- PREDICTION & EVALUATION RESULTS ---")
+    print("=" * 55)
+    print(f"Evaluated Test Slices:   {total}")
+    print(f"Test Loss:               {test_loss:.4f}")
+    print(f"Test Accuracy:           {test_accuracy:.2f}%")
+    print(f"Test AUROC:              {test_auroc:.4f}")
+
+    print("\nClassification Report:")
+    print(classification_report(
+        all_labels,
+        all_predictions,
+        labels=[0, 1],
+        target_names=CLASS_NAMES,
+        zero_division=0,
+        digits=4
+    ))
+
+    print("Confusion Matrix:")
+    print(confusion_matrix(all_labels, all_predictions, labels=[0, 1]))
+    print("=" * 55 + "\n")
+
+    return {
+        "test_loss": test_loss,
+        "test_accuracy": test_accuracy,
+        "test_auroc": test_auroc,
+        "all_labels": all_labels,
+        "all_predictions": all_predictions,
+        "all_probabilities": all_probabilities,
+        "misclassified_samples": misclassified_samples,
+        "correct_samples": correct_samples,
+    }
+
 
 # https://share.gemini.google/0E2OlinoIE2n
 def plot_training_and_test_curves(
@@ -152,204 +319,174 @@ def plot_split_comparison_bar(
     print(f"Split comparison bar chart saved to {save_path}")
 
 
-def plot_confusion_matrix(
-    y_true, y_pred, class_names=("NC", "AD"), save_path="baseline_test_cm.png"
-):
-  """Plots and annotates the test set confusion matrix."""
-  cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
-
-  fig, ax = plt.subplots(figsize=(5.5, 4.5))
-  cax = ax.matshow(cm, cmap=plt.cm.Blues)
-  fig.colorbar(cax)
-
-  ax.set_xticks(range(len(class_names)))
-  ax.set_yticks(range(len(class_names)))
-  ax.set_xticklabels(class_names)
-  ax.set_yticklabels(class_names)
-  ax.set_xlabel("Predicted Label", labelpad=8)
-  ax.set_ylabel("True Label")
-  ax.set_title("Test Confusion Matrix", pad=15)
-
-  thresh = cm.max() / 2.0
-  for i in range(cm.shape[0]):
-    for j in range(cm.shape[1]):
-      ax.text(
-          j,
-          i,
-          str(cm[i, j]),
-          ha="center",
-          va="center",
-          color="white" if cm[i, j] > thresh else "black",
-          fontsize=12,
-          fontweight="bold",
-      )
-
-  plt.tight_layout()
-  if save_path:
+def plot_confusion_matrix(y_true, y_pred, class_names=("NC", "AD"), save_path="test_cm.png"):
+    """Plots and saves an annotated confusion matrix heatmap."""
+    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
+    fig, ax = plt.subplots(figsize=(5.5, 4.8))
+    cax = ax.matshow(cm, cmap=plt.cm.Blues)
+    fig.colorbar(cax, fraction=0.046, pad=0.04)
+    ax.set_xticks(range(len(class_names)))
+    ax.set_yticks(range(len(class_names)))
+    ax.set_xticklabels(class_names, fontsize=11)
+    ax.set_yticklabels(class_names, fontsize=11)
+    ax.set_xlabel("Predicted Label", labelpad=10, fontsize=12)
+    ax.set_ylabel("True Label", fontsize=12)
+    ax.set_title("Test Confusion Matrix", pad=15, fontsize=13, fontweight="bold")
+    thresh = cm.max() / 2.0
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(
+                j, i, f"{cm[i, j]:,}",
+                ha="center", va="center",
+                color="white" if cm[i, j] > thresh else "black",
+                fontsize=13, fontweight="bold"
+            )
+    plt.tight_layout()
     plt.savefig(save_path, dpi=300)
-    print(f"Saved: {save_path}")
+    plt.close()
+    print(f"Confusion matrix saved to: {save_path}")
 
-def plot_roc_curve(
-    y_true, y_scores, pos_label=1, save_path="baseline_test_roc.png"
-):
-  """Calculates and plots the test ROC curve and Area Under Curve (AUC)."""
-  fpr, tpr, _ = roc_curve(y_true, y_scores, pos_label=pos_label)
-  roc_auc = auc(fpr, tpr)
+def plot_roc_curve(y_true, y_scores, pos_label=1, save_path="test_roc.png"):
+    """Computes and plots Receiver Operating Characteristic (ROC) curve with AUC."""
+    fpr, tpr, _ = roc_curve(y_true, y_scores, pos_label=pos_label)
+    roc_auc = auc(fpr, tpr)
 
-  fig, ax = plt.subplots(figsize=(6, 5))
-  ax.plot(
-      fpr,
-      tpr,
-      color="darkorange",
-      lw=2,
-      label=f"Test ROC curve (AUC = {roc_auc:.3f})",
-  )
-  ax.plot([0, 1], [0, 1], color="navy", lw=1.5, linestyle="--", label="Chance")
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.plot(fpr, tpr, color="#d95f02", lw=2.5, label=f"ROC Curve (AUC = {roc_auc:.4f})")
+    ax.plot([0, 1], [0, 1], color="navy", lw=1.5, linestyle="--", label="Random Classifier (AUC = 0.5000)")
 
-  ax.set_xlim([0.0, 1.0])
-  ax.set_ylim([0.0, 1.05])
-  ax.set_xlabel("False Positive Rate (1 - Specificity)")
-  ax.set_ylabel("True Positive Rate (Sensitivity / Recall)")
-  ax.set_title("Receiver Operating Characteristic (ROC)")
-  ax.legend(loc="lower right")
-  ax.grid(True, linestyle="--", alpha=0.5)
-
-  plt.tight_layout()
-  if save_path:
+    ax.set_xlim([0.0, 1.0])
+    ax.set_ylim([0.0, 1.05])
+    ax.set_xlabel("False Positive Rate (1 - Specificity)", fontsize=11)
+    ax.set_ylabel("True Positive Rate (Sensitivity / Recall)", fontsize=11)
+    ax.set_title("Receiver Operating Characteristic (ROC)", fontsize=13, fontweight="bold")
+    ax.legend(loc="lower right", fontsize=10)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    plt.tight_layout()
     plt.savefig(save_path, dpi=300)
-    print(f"Saved: {save_path}")
 
-def plot_misclassified_grid(
-    misclassified_samples,
-    class_names=("NC", "AD"),
-    max_samples=8,
-    ncols=4,
-    save_path="misclassified_samples.png",
-):
-  """Plots a grid of misclassified MRI scans showing true vs.
+    plt.close()
+    print(f"ROC curve saved to: {save_path}")
 
-  pred labels and confidence.
-  """
-  n_samples = min(len(misclassified_samples), max_samples)
-  if n_samples == 0:
-    print("No misclassified samples found to plot.")
-    return
-
-  nrows = int(np.ceil(n_samples / ncols))
-  fig, axes = plt.subplots(nrows, ncols, figsize=(3.5 * ncols, 3.8 * nrows))
-
-  # Flatten axes if grid is 1D or single subplot
-  if n_samples == 1:
-    axes = np.array([axes])
-  axes = axes.flatten()
-
-  for idx in range(n_samples):
-    sample = misclassified_samples[idx]
-    img = sample["image"]
-    true_label = class_names[sample["true"]]
-    pred_label = class_names[sample["pred"]]
-    confidence = sample["confidence"] * 100
-
-    # Handle Grayscale (1, H, W) or multi-channel tensors
-    if isinstance(img, torch.Tensor):
-      img = img.detach().cpu().numpy()
+def _render_image_grid(samples, class_names, title_prefix, save_path, max_samples=8, ncols=4):
+    """Internal helper to un-normalize and plot grids of MRI slice predictions."""
+    n_samples = min(len(samples), max_samples)
+    if n_samples == 0:
+        print(f"No samples found to plot for {save_path}.")
+        return
     
-    if img.shape[0] == 1: # grayscale: mean 0.5, std 0.5
-        img = img.squeeze(0) * 0.5 + 0.5
-    elif img.shape[0] == 3: # ImageNet normalisation
-        mean = np.array([0.485, 0.456, 0.406])[:, None, None]
-        std = np.array([0.229, 0.224, 0.225])[:, None, None]
-        img = np.transpose(img * std + mean, (1, 2, 0))
+    nrows = int(np.ceil(n_samples / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3.8 * ncols, 4.0 * nrows))
+    axes = np.array([axes]).flatten() if n_samples == 1 else axes.flatten()
 
-    img = np.clip(img, 0, 1)
+    for idx in range(n_samples):
+        sample = samples[idx]
+        img = sample["image"]
+        true_label = class_names[sample["true"]]
+        pred_label = class_names[sample["pred"]]
+        confidence = sample["confidence"] * 100.0
+        
+        if isinstance(img, torch.Tensor):
+            img = img.detach().cpu().numpy()
 
-    axes[idx].imshow(img, cmap="gray")
-    axes[idx].axis("off")
+        # Un-normalize single-channel (mean=0.5, std=0.5)
+        if img.ndim == 3 and img.shape[0] == 1:
+            img = img.squeeze(0) * 0.5 + 0.5
+        elif img.ndim == 3 and img.shape[0] == 3:
+            mean = np.array([0.485, 0.456, 0.406])[:, None, None]
+            std = np.array([0.229, 0.224, 0.225])[:, None, None]
+            img = np.transpose(img * std + mean, (1, 2, 0))
 
-    # Flag False Positives (NC classified as AD) vs False Negatives (AD classified as NC)
-    error_type = (
-        "False Positive" if pred_label == "AD" else "False Negative"
-    )
-    axes[idx].set_title(
-        f"Pred: {pred_label} ({confidence:.1f}%)\n"
-        f"True: {true_label} [{error_type}]",
-        fontsize=10,
-        color="crimson",
-        fontweight="bold",
-    )
+        img = np.clip(img, 0.0, 1.0)
+        axes[idx].imshow(img, cmap="gray")
+        axes[idx].axis("off")
 
-  # Turn off unused subplot axes
-  for idx in range(n_samples, len(axes)):
-    axes[idx].axis("off")
+        is_error = (pred_label != true_label)
+        if is_error:
+            error_type = "False Positive" if pred_label == "AD" else "False Negative"
+            color = "crimson"
+            title_text = f"Pred: {pred_label} ({confidence:.1f}%)\nTrue: {true_label} [{error_type}]"
+        else:
+            color = "#2ca02c"
+            title_text = f"Pred: {pred_label} ({confidence:.1f}%)\nTrue: {true_label} [Correct]"
 
-  plt.tight_layout()
-  if save_path:
+        axes[idx].set_title(title_text, fontsize=10, color=color, fontweight="bold")
+
+    for idx in range(n_samples, len(axes)):
+        axes[idx].axis("off")
+
+    plt.suptitle(title_prefix, fontsize=14, fontweight="bold", y=0.98)
+    plt.tight_layout()
     plt.savefig(save_path, dpi=300)
-    print(f"Saved misclassified grid to {save_path}")
+    plt.close()
+    print(f"Sample grid saved to: {save_path}")
 
 
+def plot_misclassified_grid(misclassified_samples, class_names=("NC", "AD"), max_samples=8, save_path="misclassified_slices.png"):
+    """Plots failure case autopsy grid displaying misclassifications with confidence scores."""
+    _render_image_grid(
+        misclassified_samples,
+        class_names,
+        title_prefix="Failure Case Autopsy (False Positives & False Negatives)",
+        save_path=save_path,
+        max_samples=max_samples,
+        ncols=4
+    )
+
+def plot_predictions_grid(correct_samples, class_names=("NC", "AD"), max_samples=8, save_path="sample_predictions.png"):
+    """Plots correctly classified representative MRI test cases."""
+    _render_image_grid(
+        correct_samples,
+        class_names,
+        title_prefix="Representative Correct Diagnostic Predictions",
+        save_path=save_path,
+        max_samples=max_samples,
+        ncols=4
+    )
 
 if __name__ == "__main__":
-#    print("---------CNN--------------")
-#    (train_losses, train_accuracies, val_losses, 
-#            val_accuracies, test_loss, test_accuracy, 
-#            val_epochs, all_labels, all_predictions, 
-#            all_probabilities, misclassified_samples) = pipeline(model_name="cnn")
-#
-#    plot_training_and_test_curves(
-#        train_losses, train_accuracies, val_losses, val_accuracies, val_epochs, 
-#        test_loss=test_loss, test_accuracy=test_accuracy, save_path="cnn_training_test_curves.png")
-#
-#    plot_confusion_matrix(
-#      y_true=all_labels,
-#      y_pred=all_predictions,
-#      class_names=["NC", "AD"],
-#      save_path="cnn_test_cm.png",
-#    )
-#
-#    plot_roc_curve(
-#      y_true=all_labels,
-#      y_scores=[p[1] for p in all_probabilities],
-#      pos_label=1,
-#      save_path="cnn_test_roc.png",
-#    )
-#
-#    plot_misclassified_grid(
-#        misclassified_samples=misclassified_samples,
-#        class_names=["NC", "AD"],
-#        max_samples=8,
-#        ncols=4,
-#        save_path="cnn_misclassified_slices.png",
-#    )
-#
-    print("---------CONVNEXT--------------")
-    (train_losses, train_accuracies, val_losses, 
-            val_accuracies, test_loss, test_accuracy, 
-            val_epochs, all_labels, all_predictions, 
-            all_probabilities, misclassified_samples) = pipeline(model_name="convnext")
+    parser = argparse.ArgumentParser(description="Run inference demonstration on test cases with saved model.")
+    parser.add_argument("--model", type=str, default="convnext", choices=["convnext", "cnn"],
+                        help="Model architecture: 'convnext' or 'cnn' (default: convnext)")
+    parser.add_argument("--weights", type=str, default=None,
+                        help="Path to pre-trained .pth checkpoint (default: {model}_best.pth)")
+    parser.add_argument("--num_workers", type=int, default=4, help="DataLoader num_workers (default: 4)")
+    parser.add_argument("--data_root", type=str, default="/home/groups/comp3710/ADNI/AD_NC",
+                        help="Path to ADNI AD_NC dataset (default: /home/groups/comp3710/ADNI/AD_NC)")
+    parser.add_argument("--batch_size", type=int, default=64, help="Inference batch size (default: 64)")
+    parser.add_argument("--save_dir", type=str, default=".", help="Directory to save diagnostic plots (default: .)")
 
-    plot_training_and_test_curves(
-        train_losses, train_accuracies, val_losses, val_accuracies, val_epochs, 
-        test_loss=test_loss, test_accuracy=test_accuracy, save_path="convnext_training_test_curves.png")
+    args = parser.parse_args()
 
-    plot_confusion_matrix(
-      y_true=all_labels,
-      y_pred=all_predictions,
-      class_names=["NC", "AD"],
-      save_path="convnext_test_cm.png",
+    # Determine weights path
+    weights_path = args.weights if args.weights else f"{args.model.lower()}_best.pth"
+    device = get_device()
+
+    # Load pre-trained model
+    model = load_trained_model(args.model, weights_path, device)
+    
+    # Load test DataLoader (using in_channels=1 native grayscale)
+    _, _, test_loader = build_dataloaders(
+        in_channels=1,
+        data_root=args.data_root,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers
     )
 
-    plot_roc_curve(
-      y_true=all_labels,
-      y_scores=[p[1] for p in all_probabilities],
-      pos_label=1,
-      save_path="convnext_test_roc.png",
-    )
+    # Run inference evaluation
+    results = run_inference(model, test_loader, device)
 
-    plot_misclassified_grid(
-        misclassified_samples=misclassified_samples,
-        class_names=["NC", "AD"],
-        max_samples=8,
-        ncols=4,
-        save_path="convnext_misclassified_slices.png",
-    )
+    # Generate diagnostic plots
+    os.makedirs(args.save_dir, exist_ok=True)
+    cm_path = os.path.join(args.save_dir, f"{args.model.lower()}_test_cm.png")
+    roc_path = os.path.join(args.save_dir, f"{args.model.lower()}_test_roc.png")
+    autopsy_path = os.path.join(args.save_dir, f"{args.model.lower()}_misclassified_slices.png")
+    samples_path = os.path.join(args.save_dir, f"{args.model.lower()}_sample_predictions.png")
+    
+    plot_confusion_matrix(results["all_labels"], results["all_predictions"], class_names=CLASS_NAMES, save_path=cm_path)
+    ad_probs = [p[1] for p in results["all_probabilities"]]
+    plot_roc_curve(results["all_labels"], ad_probs, pos_label=1, save_path=roc_path)
+    plot_misclassified_grid(results["misclassified_samples"], class_names=CLASS_NAMES, max_samples=8, save_path=autopsy_path)
+    plot_predictions_grid(results["correct_samples"], class_names=CLASS_NAMES, max_samples=8, save_path=samples_path)
+    
+    print("\nInference demonstration completed successfully! All diagnostic plots generated.")
