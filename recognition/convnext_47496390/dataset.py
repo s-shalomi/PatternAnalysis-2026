@@ -47,7 +47,7 @@ class ADNISliceDataset(Dataset):
         if self.transform:
             image = self.transform(image)
 
-        return image, torch.tensor(label, dtype=torch.long)
+        return image, torch.tensor(label, dtype=torch.long), self.patient_ids[idx]
 
 
 def get_transforms(in_channels=1):

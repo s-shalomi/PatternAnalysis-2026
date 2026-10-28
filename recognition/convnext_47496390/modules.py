@@ -73,8 +73,6 @@ Architecture Overview:
 
 # https://github.com/pytorch/vision/blob/main/torchvision/models/convnext.py
 # https://share.gemini.google/n9s7qtpk7eQD
-
-
 class DropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks)."""
     def __init__(self, drop_prob: float = 0.0):

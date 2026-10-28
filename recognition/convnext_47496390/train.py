@@ -50,7 +50,7 @@ def train_epoch(model, loader, criterion, optimizer, dev):
     correct = 0
     total = 0
 
-    for images, labels in loader:
+    for images, labels, _ in loader:
         images = images.to(dev, non_blocking=True)
         labels = labels.to(dev, dtype=torch.long, non_blocking=True)
         optimizer.zero_grad()
@@ -80,7 +80,7 @@ def validate(model, loader, criterion, dev):
     total = 0
 
     with torch.no_grad():
-        for images, labels in loader:
+        for images, labels, _ in loader:
             images = images.to(dev, non_blocking=True)
             labels = labels.to(dev, dtype=torch.long, non_blocking=True)
 
@@ -98,8 +98,8 @@ def validate(model, loader, criterion, dev):
     accuracy = 100.0 * correct / total
     return loss, accuracy
 
-def test(model, loader, criterion, dev, n_mis=16, n_correct_per_class=8):
-    """Eval model performance on the test set.
+def test(model, loader, criterion, dev, n_mis_per_class=4, n_correct_per_class=4):
+    """Eeal model performance on the test set.
     Reports accuracy, per-class precision/recall/F1, confusion matrix, and AUROC."""
     model.eval()
 
@@ -110,7 +110,9 @@ def test(model, loader, criterion, dev, n_mis=16, n_correct_per_class=8):
     all_labels = []
     all_predictions = []
     all_probabilities = []
-    misclassified_samples = []
+    all_patient_ids = []
+    misclassified_samples = {0: [], 1: []}   # keyed by TRUE class (0 = false positives, 1 = false negatives)
+    correct_samples = {0: [], 1: []}
 
     # Latency tracking
     if dev.type == "cuda":
@@ -118,7 +120,7 @@ def test(model, loader, criterion, dev, n_mis=16, n_correct_per_class=8):
     inference_start = time.perf_counter()
 
     with torch.no_grad():
-        for images, labels, _ in loader:
+        for images, labels, pids in loader:
             images = images.to(dev, non_blocking=True)
             labels = labels.to(dev, dtype=torch.long, non_blocking=True)
 
@@ -136,36 +138,32 @@ def test(model, loader, criterion, dev, n_mis=16, n_correct_per_class=8):
             correct += (predictions == labels).sum().item()
             total += batch_size
 
-            all_labels.extend(labels.cpu().tolist())
-            all_predictions.extend(predictions.cpu().tolist())
-            all_probabilities.extend(probs.cpu().tolist())
-
             labels_l = labels.cpu().tolist()
             preds_l = predictions.cpu().tolist()
             confs_l = confidences.cpu().tolist()
 
+            all_labels.extend(labels_l)
+            all_predictions.extend(preds_l)
+            all_probabilities.extend(probs.cpu().tolist())
+            all_patient_ids.extend(pids)
+
             # Collect example slices (copy to CPU only when actually kept)
             for i in range(batch_size):
                 t, p = labels_l[i], preds_l[i]
-                sample = None
+                is_correct = (p == t)
+                bucket = correct_samples if is_correct else misclassified_samples
+                cap = n_correct_per_class if is_correct else n_mis_per_class
 
-                if p != t:
-                    if len(misclassified_samples) < n_mis:
-                        sample = {"image": images[i].cpu(), "pred": p,
-                                  "true": t, "confidence": confs_l[i]}
-                        misclassified_samples.append(sample)
-
-                elif len(correct_samples[t]) < n_correct_per_class:
-                    sample = {"image": images[i].cpu(), "pred": p,
-                              "true": t, "confidence": confs_l[i]}
-                    correct_samples[t].append(sample)
+                if len(bucket[t]) < cap:
+                    bucket[t].append({"image": images[i].cpu(), "pred": p,
+                                      "true": t, "confidence": confs_l[i]})
 
 
     if dev.type == "cuda":
         torch.cuda.synchronize(dev)
 
     inference_elapsed = time.perf_counter() - inference_start
-    latency_per_sample_ms = (inference_elapsed / total) * 1000.0 if total > 0 else 0.0
+    latency_ms = (inference_elapsed / total) * 1000.0 if total > 0 else 0.0
 
     test_loss = running_loss / total
     test_accuracy = 100.0 * correct / total
@@ -183,7 +181,7 @@ def test(model, loader, criterion, dev, n_mis=16, n_correct_per_class=8):
     print(f"Test Loss:             {test_loss:.4f}")
     print(f"Test Accuracy:         {test_accuracy:.2f}%")
     print(f"Test AUROC:            {test_auroc:.4f}")
-    print(f"Inference Latency:     {latency_per_sample_ms:.2f} ms / sample ({total} test slices)")
+    print(f"Inference Latency:     {latency_ms:.2f} ms / sample ({total} test slices)")
 
     print("\nClassification Report:")
     print(classification_report(
@@ -199,7 +197,7 @@ def test(model, loader, criterion, dev, n_mis=16, n_correct_per_class=8):
     print(confusion_matrix(all_labels, all_predictions, labels=[0, 1]))
     print("=" * 50 + "\n")
 
-    return (
+    return {
         "test_loss": test_loss,
         "test_accuracy": test_accuracy,
         "test_auroc": test_auroc,
@@ -209,7 +207,7 @@ def test(model, loader, criterion, dev, n_mis=16, n_correct_per_class=8):
         "all_probabilities": all_probabilities,
         "misclassified_samples": misclassified_samples,
         "correct_samples": correct_samples[0] + correct_samples[1],
-    )
+        }
 
 def plot_training_curves(
     train_losses,
@@ -423,16 +421,15 @@ def pipeline(
     print(f"Total Trainable Parameters:  {total_params:,}")
     print(f"Peak GPU VRAM Allocated:     {peak_vram_mb:.2f} MB")
     print(f"Total Training Runtime:      {total_training_time:.2f} seconds ({total_training_time / num_epochs:.2f} s/epoch)")
-    print(f"Inference Latency:           {results["latency_ms"]:.2f} ms / sample")
-    print(f"Final Test Accuracy:         {results["test_accuracy"]:.2f}%")
-    print(f"Final Test AUROC:            {results["test_auroc"]:.4f}")
+    print(f"Inference Latency:           {results['latency_ms']:.2f} ms / sample")
+    print(f"Final Test Accuracy:         {results['test_accuracy']:.2f}%")
+    print(f"Final Test AUROC:            {results['test_auroc']:.4f}")
     print("=" * 65 + "\n")
     return {
         "model_name": model_name,
         "total_params": total_params,
         "peak_vram_mb": peak_vram_mb,
         "training_time": total_training_time,
-        "latency_ms": latency_ms,
         "train_losses": train_losses,
         "train_accuracies": train_accuracies,
         "val_losses": val_losses,
