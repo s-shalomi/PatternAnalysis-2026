@@ -16,6 +16,7 @@ import os
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
+from collections import defaultdict
 
 import torch
 import torch.nn as nn
@@ -256,68 +257,6 @@ def plot_training_and_test_curves(
     print(f"Curves with test results saved to {save_path}")
 
 
-def plot_split_comparison_bar(
-    train_acc,
-    val_acc,
-    test_acc,
-    train_loss,
-    val_loss,
-    test_loss,
-    save_path="split_comparison.png",
-):
-  """Side-by-side bar chart comparing final Train, Best Validation, and Test metrics."""
-  splits = ["Train (Final)", "Val (Best)", "Test"]
-  accuracies = [train_acc, val_acc, test_acc]
-  losses = [train_loss, val_loss, test_loss]
-
-  fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
-
-  # Accuracy comparison
-  bars_acc = axes[0].bar(
-      splits, accuracies, color=["#4A90E2", "#50E3C2", "#F5A623"], width=0.55
-  )
-  axes[0].set_title("Accuracy Across Splits (%)", fontsize=13)
-  axes[0].set_ylabel("Accuracy (%)", fontsize=11)
-  axes[0].set_ylim(0, 105)
-  axes[0].grid(axis="y", linestyle="--", alpha=0.6)
-  for bar in bars_acc:
-    height = bar.get_height()
-    axes[0].annotate(
-        f"{height:.2f}%",
-        xy=(bar.get_x() + bar.get_width() / 2, height),
-        xytext=(0, 4),
-        textcoords="offset points",
-        ha="center",
-        va="bottom",
-        fontsize=10,
-        fontweight="bold",
-    )
-
-  # Loss comparison
-  bars_loss = axes[1].bar(
-      splits, losses, color=["#4A90E2", "#50E3C2", "#F5A623"], width=0.55
-  )
-  axes[1].set_title("Loss Across Splits", fontsize=13)
-  axes[1].set_ylabel("Loss", fontsize=11)
-  axes[1].grid(axis="y", linestyle="--", alpha=0.6)
-  for bar in bars_loss:
-    height = bar.get_height()
-    axes[1].annotate(
-        f"{height:.4f}",
-        xy=(bar.get_x() + bar.get_width() / 2, height),
-        xytext=(0, 4),
-        textcoords="offset points",
-        ha="center",
-        va="bottom",
-        fontsize=10,
-        fontweight="bold",
-    )
-
-  plt.tight_layout()
-  if save_path:
-    plt.savefig(save_path, dpi=300)
-    print(f"Split comparison bar chart saved to {save_path}")
-
 
 def plot_confusion_matrix(y_true, y_pred, class_names=("NC", "AD"), save_path="test_cm.png"):
     """Plots and saves an annotated confusion matrix heatmap."""
@@ -444,6 +383,38 @@ def plot_predictions_grid(correct_samples, class_names=("NC", "AD"), max_samples
         ncols=4
     )
 
+def evaluate_patient_level(test_dataset, all_probabilities, all_labels):
+    """
+    Aggregates slice-level probabilities by patient_id using soft-voting.
+    """
+    patient_probs = defaultdict(list)
+    patient_true = {}
+
+    for idx, pid in enumerate(test_dataset.patient_ids):
+        patient_probs[pid].append(all_probabilities[idx][1]) # Probability of AD
+        patient_true[pid] = all_labels[idx]
+
+    patient_preds = []
+    patient_targets = []
+
+    for pid, probs_list in patient_probs.items():
+        # Soft-voting: average AD probability across all slices for this patient
+        mean_prob = sum(probs_list) / len(probs_list)
+        pred_label = 1 if mean_prob >= 0.50 else 0
+        patient_preds.append(pred_label)
+        patient_targets.append(patient_true[pid])
+
+    correct = sum(p == t for p, t in zip(patient_preds, patient_targets))
+    patient_acc = 100.0 * correct / len(patient_targets)
+
+    print("\n" + "=" * 55)
+    print("--- PATIENT-LEVEL EVALUATION (450 PATIENTS) ---")
+    print("=" * 55)
+    print(f"Total Unique Patients: {len(patient_targets)}")
+    print(f"Patient-Level Accuracy: {patient_acc:.2f}%")
+    print("=" * 55 + "\n")
+    return patient_acc
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run inference demonstration on test cases with saved model.")
     parser.add_argument("--model", type=str, default="convnext", choices=["convnext", "cnn"],
@@ -488,5 +459,7 @@ if __name__ == "__main__":
     plot_roc_curve(results["all_labels"], ad_probs, pos_label=1, save_path=roc_path)
     plot_misclassified_grid(results["misclassified_samples"], class_names=CLASS_NAMES, max_samples=8, save_path=autopsy_path)
     plot_predictions_grid(results["correct_samples"], class_names=CLASS_NAMES, max_samples=8, save_path=samples_path)
-    
+   
+    evaluate_patient_level(test_loader.dataset, results["all_probabilities"], results["all_labels"])
+
     print("\nInference demonstration completed successfully! All diagnostic plots generated.")
