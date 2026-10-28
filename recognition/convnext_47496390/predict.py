@@ -190,6 +190,12 @@ def plot_roc_curve(y_true, y_scores, pos_label=1, save_path="test_roc.png"):
 
 def _render_image_grid(samples, class_names, title_prefix, save_path, max_samples=8, ncols=4):
     """Internal helper to un-normalize and plot grids of MRI slice predictions."""
+    if isinstance(samples, dict):
+        flat_samples = []
+        for k in sorted(samples.keys()):
+            flat_samples.extend(samples[k])
+        samples = flat_samples
+
     n_samples = min(len(samples), max_samples)
     if n_samples == 0:
         print(f"No samples found to plot for {save_path}.")
@@ -305,7 +311,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=4, help="DataLoader num_workers (default: 4)")
     parser.add_argument("--data_root", type=str, default="/home/groups/comp3710/ADNI/AD_NC",
                         help="Path to ADNI AD_NC dataset (default: /home/groups/comp3710/ADNI/AD_NC)")
-    parser.add_argument("--batch_size", type=int, default=64, help="Inference batch size (default: 64)")
+    parser.add_argument("--batch_size", type=int, default=16, help="Inference batch size (default: 16)")
     parser.add_argument("--save_dir", type=str, default=".", help="Directory to save diagnostic plots (default: .)")
 
     args = parser.parse_args()

@@ -205,7 +205,7 @@ def test(model, loader, criterion, dev, n_mis_per_class=4, n_correct_per_class=4
         "all_labels": all_labels,
         "all_predictions": all_predictions,
         "all_probabilities": all_probabilities,
-        "misclassified_samples": misclassified_samples,
+        "misclassified_samples": misclassified_samples[0] + misclassified_samples[1],,
         "correct_samples": correct_samples[0] + correct_samples[1],
         }
 
@@ -257,7 +257,7 @@ def pipeline(
     model_name: str = "convnext",
     data_root: str = "/home/groups/comp3710/ADNI/AD_NC",
     num_epochs: int = 100,
-    batch_size: int = 128,
+    batch_size: int = 16,
     lr: float = 1e-4,
     weight_decay: float = 0.05,
     warmup_epochs: int = 3,
@@ -443,7 +443,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default="convnext", choices=["convnext", "cnn"],
                         help="Model architecture: 'convnext' or 'cnn' (default: convnext)")
     parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs (default: 100)")
-    parser.add_argument("--batch_size", type=int, default=128, help="Batch size for training/eval (default: 128)")
+    parser.add_argument("--batch_size", type=int, default=128, help="Batch size for training/eval (default: 16)")
     parser.add_argument("--lr", type=float, default=1e-4, help="Peak learning rate (default: 1e-4)")
     parser.add_argument("--weight_decay", type=float, default=0.05, help="AdamW weight decay (default: 0.05)")
     parser.add_argument("--data_root", type=str, default="/home/groups/comp3710/ADNI/AD_NC",

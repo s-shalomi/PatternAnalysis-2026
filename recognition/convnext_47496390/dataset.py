@@ -80,7 +80,7 @@ def build_dataloaders(
     in_channels=1,
     data_root="AD_NC",
     val_split=0.2,
-    batch_size=32,
+    batch_size=16,
     num_workers=4,
     seed=42
 ):
@@ -203,12 +203,14 @@ if __name__ == "__main__":
         in_channels=1,
         data_root="/home/groups/comp3710/ADNI/AD_NC",
         val_split=0.2,
-        batch_size=32
+        batch_size=16
     )
 
-    # Verification batch
-    images, labels = next(iter(train_loader))
+    # Verification batch (unpacking images, labels, patient_ids)
+    images, labels, pids = next(iter(train_loader))
     print("\nVerification Batch Tensor Shapes:")
-    print(f"  Images shape: {images.shape} (Expected: [32, 1, 240, 256])")
-    print(f"  Labels shape: {labels.shape} (Expected: [32])")
-    print("dataset.py verification completed successfully!")
+
+    print(f"  Images shape: {images.shape} (Expected: [16, 1, 240, 256])")
+    print(f"  Labels shape: {labels.shape} (Expected: [16])")
+    print(f"  Sample Patient IDs: {pids[:3]}")
+
