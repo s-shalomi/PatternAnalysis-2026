@@ -205,7 +205,7 @@ def test(model, loader, criterion, dev, n_mis_per_class=4, n_correct_per_class=4
         "all_labels": all_labels,
         "all_predictions": all_predictions,
         "all_probabilities": all_probabilities,
-        "misclassified_samples": misclassified_samples[0] + misclassified_samples[1],,
+        "misclassified_samples": misclassified_samples[0] + misclassified_samples[1],
         "correct_samples": correct_samples[0] + correct_samples[1],
         }
 
