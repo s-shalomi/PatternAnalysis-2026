@@ -98,7 +98,7 @@ def validate(model, loader, criterion, dev):
     accuracy = 100.0 * correct / total
     return loss, accuracy
 
-def test(model, loader, criterion, dev):
+def test(model, loader, criterion, dev, n_mis=16, n_correct_per_class=8):
     """Eval model performance on the test set.
     Reports accuracy, per-class precision/recall/F1, confusion matrix, and AUROC."""
     model.eval()
@@ -112,11 +112,13 @@ def test(model, loader, criterion, dev):
     all_probabilities = []
     misclassified_samples = []
 
-     # Latency tracking
+    # Latency tracking
+    if dev.type == "cuda":
+        torch.cuda.synchronize(dev)
     inference_start = time.perf_counter()
 
     with torch.no_grad():
-        for images, labels in loader:
+        for images, labels, _ in loader:
             images = images.to(dev, non_blocking=True)
             labels = labels.to(dev, dtype=torch.long, non_blocking=True)
 
@@ -131,7 +133,6 @@ def test(model, loader, criterion, dev):
 
             batch_size = labels.size(0)
             running_loss += loss.item() * batch_size
-
             correct += (predictions == labels).sum().item()
             total += batch_size
 
@@ -139,23 +140,29 @@ def test(model, loader, criterion, dev):
             all_predictions.extend(predictions.cpu().tolist())
             all_probabilities.extend(probs.cpu().tolist())
 
-            # Collect misclassified samples for qualitative error analysis (max 16) (store on CPU to save GPU memory)
-            incorrect_mask = predictions != labels
-            if incorrect_mask.any():
-                bad_images = images[incorrect_mask].cpu()
-                bad_preds = predictions[incorrect_mask].cpu().tolist()
-                bad_trues = labels[incorrect_mask].cpu().tolist()
-                bad_confs = confidences[incorrect_mask].cpu().tolist()
+            labels_l = labels.cpu().tolist()
+            preds_l = predictions.cpu().tolist()
+            confs_l = confidences.cpu().tolist()
 
-                for i in range(len(bad_preds)):
-                    # Cap collection at 16 to avoid bloating RAM
-                    if len(misclassified_samples) < 16:
-                        misclassified_samples.append({
-                            "image": bad_images[i],
-                            "pred": bad_preds[i],
-                            "true": bad_trues[i],
-                            "confidence": bad_confs[i],
-                        })
+            # Collect example slices (copy to CPU only when actually kept)
+            for i in range(batch_size):
+                t, p = labels_l[i], preds_l[i]
+                sample = None
+
+                if p != t:
+                    if len(misclassified_samples) < n_mis:
+                        sample = {"image": images[i].cpu(), "pred": p,
+                                  "true": t, "confidence": confs_l[i]}
+                        misclassified_samples.append(sample)
+
+                elif len(correct_samples[t]) < n_correct_per_class:
+                    sample = {"image": images[i].cpu(), "pred": p,
+                              "true": t, "confidence": confs_l[i]}
+                    correct_samples[t].append(sample)
+
+
+    if dev.type == "cuda":
+        torch.cuda.synchronize(dev)
 
     inference_elapsed = time.perf_counter() - inference_start
     latency_per_sample_ms = (inference_elapsed / total) * 1000.0 if total > 0 else 0.0
@@ -193,14 +200,15 @@ def test(model, loader, criterion, dev):
     print("=" * 50 + "\n")
 
     return (
-        test_loss,
-        test_accuracy,
-        test_auroc,
-        latency_per_sample_ms,
-        all_labels,
-        all_predictions,
-        all_probabilities,
-        misclassified_samples,
+        "test_loss": test_loss,
+        "test_accuracy": test_accuracy,
+        "test_auroc": test_auroc,
+        "latency_ms": latency_ms,
+        "all_labels": all_labels,
+        "all_predictions": all_predictions,
+        "all_probabilities": all_probabilities,
+        "misclassified_samples": misclassified_samples,
+        "correct_samples": correct_samples[0] + correct_samples[1],
     )
 
 def plot_training_curves(
@@ -268,7 +276,8 @@ def pipeline(
     print(f"Total trainable parameters: {total_params:,}")
     
     # Loss function with label smoothing for calibrated probabilities
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1) # training
+    eval_criterion = nn.CrossEntropyLoss() # val + test
     
     # AdamW with weight decay
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -351,7 +360,7 @@ def pipeline(
             val_loss, val_accuracy = validate(
                 model,
                 val_loader,
-                criterion,
+                eval_criterion,
                 device,
             )
 
@@ -373,8 +382,9 @@ def pipeline(
     if device.type == "cuda":
         torch.cuda.synchronize(device)
         
-    end_time = time.perf_counter() 
-    print(f"Total training and validation time: {end_time - start_time:.2f} seconds")
+    end_time = time.perf_counter()
+    total_training_time = end_time - start_time
+    print(f"Total training and validation time: {total_training_time:.2f} seconds")
 
     # Profile Peak GPU VRAM
     peak_vram_mb = (torch.cuda.max_memory_allocated(device) / (1024 ** 2)) if device.type == "cuda" else 0.0
@@ -386,19 +396,10 @@ def pipeline(
     # load best model
     model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 
-    (
-        test_loss,
-        test_accuracy,
-        test_auroc,
-        latency_ms,
-        all_labels,
-        all_predictions,
-        all_probabilities,
-        misclassified_samples,
-    ) = test(
+    results = test(
         model,
         test_loader,
-        criterion,
+        eval_criterion,
         device,
     )
 
@@ -408,8 +409,9 @@ def pipeline(
         train_accuracies,
         val_losses,
         val_accuracies,
-        val_epochs,test_loss=test_loss,
-        test_accuracy=test_accuracy,
+        val_epochs,
+        test_loss=results["test_loss"],
+        test_accuracy=results["test_accuracy"],
         save_path=curves_path
     )
 
@@ -421,9 +423,9 @@ def pipeline(
     print(f"Total Trainable Parameters:  {total_params:,}")
     print(f"Peak GPU VRAM Allocated:     {peak_vram_mb:.2f} MB")
     print(f"Total Training Runtime:      {total_training_time:.2f} seconds ({total_training_time / num_epochs:.2f} s/epoch)")
-    print(f"Inference Latency:           {latency_ms:.2f} ms / sample")
-    print(f"Final Test Accuracy:         {test_accuracy:.2f}%")
-    print(f"Final Test AUROC:            {test_auroc:.4f}")
+    print(f"Inference Latency:           {results["latency_ms"]:.2f} ms / sample")
+    print(f"Final Test Accuracy:         {results["test_accuracy"]:.2f}%")
+    print(f"Final Test AUROC:            {results["test_auroc"]:.4f}")
     print("=" * 65 + "\n")
     return {
         "model_name": model_name,
@@ -436,13 +438,7 @@ def pipeline(
         "val_losses": val_losses,
         "val_accuracies": val_accuracies,
         "val_epochs": val_epochs,
-        "test_loss": test_loss,
-        "test_accuracy": test_accuracy,
-        "test_auroc": test_auroc,
-        "all_labels": all_labels,
-        "all_predictions": all_predictions,
-        "all_probabilities": all_probabilities,
-        "misclassified_samples": misclassified_samples,
+        **results,
     }
 
 if __name__ == "__main__":

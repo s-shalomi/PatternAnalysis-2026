@@ -11,6 +11,7 @@ Produces visualisations of:
 
 from modules import BaselineCNN, convnext_tiny
 from dataset import build_dataloaders
+from train import test, get_device, CLASS_NAMES
 
 import os
 import argparse
@@ -23,13 +24,6 @@ import torch.nn as nn
 from sklearn.metrics import confusion_matrix, classification_report, roc_curve, auc, roc_auc_score
 
 
-CLASS_NAMES = ["NC", "AD"]
-
-def get_device() -> torch.device:
-    """Returns CUDA device if available, else CPU."""
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    return torch.device("cpu")
 
 def load_trained_model(model_name: str, weights_path: str, device: torch.device) -> nn.Module:
     """
@@ -63,119 +57,6 @@ def load_trained_model(model_name: str, weights_path: str, device: torch.device)
     model.eval()
     return model
 
-def run_inference(model: nn.Module, test_loader, device: torch.device):
-    """
-    Runs evaluation on the test set and gathers predictions, confidences, and autopsy samples.
-    """
-    all_labels = []
-    all_predictions = []
-    all_probabilities = []
-    misclassified_samples = []
-    correct_samples = []
-
-    criterion = nn.CrossEntropyLoss()
-    running_loss = 0.0
-    correct = 0
-    total = 0
-
-    print("Running inference across test set")
-    with torch.no_grad():
-        for images, labels in test_loader:
-            images = images.to(device, non_blocking=True)
-            labels = labels.to(device, dtype=torch.long, non_blocking=True)
-
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-
-            batch_size = labels.size(0)
-            running_loss += loss.item() * batch_size
-
-            probs = torch.softmax(outputs, dim=1)
-            predictions = outputs.argmax(dim=1)
-            confidences = probs.max(dim=1).values
-
-            correct += (predictions == labels).sum().item()
-            total += batch_size
-
-            all_labels.extend(labels.cpu().tolist())
-            all_predictions.extend(predictions.cpu().tolist())
-            all_probabilities.extend(probs.cpu().tolist())
-
-            # Gather misclassified cases
-            incorrect_mask = (predictions != labels).cpu()
-            if incorrect_mask.any():
-                bad_imgs = images[incorrect_mask].cpu()
-                bad_preds = predictions[incorrect_mask].cpu().tolist()
-                bad_trues = labels[incorrect_mask].cpu().tolist()
-                bad_confs = confidences[incorrect_mask].cpu().tolist()
-                for i in range(len(bad_preds)):
-                    if len(misclassified_samples) < 16:
-                        misclassified_samples.append({
-                            "image": bad_imgs[i],
-                            "pred": bad_preds[i],
-                            "true": bad_trues[i],
-                            "confidence": bad_confs[i],
-                        })
-
-            # Gather correctly classified samples
-            correct_mask = (predictions == labels).cpu()
-            if correct_mask.any():
-                good_imgs = images[correct_mask].cpu()
-                good_preds = predictions[correct_mask].cpu().tolist()
-                good_trues = labels[correct_mask].cpu().tolist()
-                good_confs = confidences[correct_mask].cpu().tolist()
-                for i in range(len(good_preds)):
-                    if len(correct_samples) < 16:
-                        correct_samples.append({
-                            "image": good_imgs[i],
-                            "pred": good_preds[i],
-                            "true": good_trues[i],
-                            "confidence": good_confs[i],
-                        })
-    test_loss = running_loss / total
-    test_accuracy = 100.0 * correct / total
-
-    # Compute AUROC
-    ad_scores = [p[1] for p in all_probabilities]
-    try:
-        test_auroc = roc_auc_score(all_labels, ad_scores)
-    except Exception as e:
-        print(f"Warning: AUROC calculation failed: {e}")
-        test_auroc = float("nan")
-
-
-    print("\n" + "=" * 55)
-    print("--- PREDICTION & EVALUATION RESULTS ---")
-    print("=" * 55)
-    print(f"Evaluated Test Slices:   {total}")
-    print(f"Test Loss:               {test_loss:.4f}")
-    print(f"Test Accuracy:           {test_accuracy:.2f}%")
-    print(f"Test AUROC:              {test_auroc:.4f}")
-
-    print("\nClassification Report:")
-    print(classification_report(
-        all_labels,
-        all_predictions,
-        labels=[0, 1],
-        target_names=CLASS_NAMES,
-        zero_division=0,
-        digits=4
-    ))
-
-    print("Confusion Matrix:")
-    print(confusion_matrix(all_labels, all_predictions, labels=[0, 1]))
-    print("=" * 55 + "\n")
-
-    return {
-        "test_loss": test_loss,
-        "test_accuracy": test_accuracy,
-        "test_auroc": test_auroc,
-        "all_labels": all_labels,
-        "all_predictions": all_predictions,
-        "all_probabilities": all_probabilities,
-        "misclassified_samples": misclassified_samples,
-        "correct_samples": correct_samples,
-    }
 
 
 # https://share.gemini.google/0E2OlinoIE2n
@@ -445,7 +326,7 @@ if __name__ == "__main__":
     )
 
     # Run inference evaluation
-    results = run_inference(model, test_loader, device)
+    results = test(model, test_loader, nn.CrossEntropyLoss(), device)
 
     # Generate diagnostic plots
     os.makedirs(args.save_dir, exist_ok=True)
