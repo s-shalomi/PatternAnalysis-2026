@@ -65,7 +65,7 @@ Images were also normalised to have a mean and standard deviation of 0.5, to ens
 
 ## Acceptance Criteria
 
-The Dilemma: models frequently achieve deceptively high aggregate test accuracy while concealing catastrophic overconfidence on borderline, ambiguous, or out-of-distribution cases.
+**The Dilemma**: models frequently achieve deceptively high aggregate test accuracy while concealing catastrophic overconfidence on borderline, ambiguous, or out-of-distribution cases.
 
 To address this, the following acceptance criteria were defined:
 - **Zero Data Leakage**: 100% patient level separation across data splits
@@ -74,10 +74,12 @@ To address this, the following acceptance criteria were defined:
 
 ## Risks
 
-Risks include:
+Risks associated with the project include:
 - Data leakage between training sets
 - Class imbalance may cause bias towards majority class
 - Unequal distribution between datasets may cause inflated accuracy readings
+
+The project has been implemented in a manner that mitigates these risks.
 
 Fallback Model: Since ConvNeXt is build on a ResNet Architecture, a suitable fallback would be ResNet-18 or ResNet-50.
 
@@ -109,7 +111,7 @@ Training and validation accuracy increase with minimal divergence. This suggests
 
 ## Test Results
 
-The model recieved a final test accuracy of **77.18%**, with a patient level test accuracy of **78.22**.
+The model recieved a final test accuracy of **77.18%**, with a patient level test accuracy of **78.22%**.
 Although this is much lower than validation accuracy and loss, it can be explained by a few possible reasons:
 - The test set may have a different distribution to the testing and validation sets
 - There may be a different class imbalance distribution between the test and training sets
@@ -134,10 +136,11 @@ Although this is much lower than validation accuracy and loss, it can be explain
 - NC precision refers to the number of scans with NC out of all scans the model flagged as having NC
 - F1 score balances recall and precision to a value between 0 and 1
 
-AUROC tests the model across all possible decision cutoffs from 0% to 100%. A high AUROC score means that the model correctly ranks an Alzheimer's scan as higher risk than a healthy scan 82.5% of the time.
+AUROC tests the model across all possible decision cutoffs from 0% to 100%.  
+A high AUROC score means that the model correctly ranks an Alzheimer's scan as higher risk than a healthy scan 82.5% of the time.
 
 The figures above show that the model is biased twoards predicting NC over AD, which is undesirable in clinical screening.
-Future work could include lowering the decision threshold for the AD class from 0.5 down to 0.3. 
+**Future work** could include lowering the decision threshold for the AD class from 0.5 down to 0.3. 
 
 ## Experimental iterations
 
@@ -147,14 +150,13 @@ Future work could include lowering the decision threshold for the AD class from 
 - Adding linear warmup (3, 10 epochs) followed by cosine annealing decay stabilized feature learning. However, using batch size 128 consumed 17.7 GB VRAM and caused generalization degradation
 - Dropping batch size to 16 provided beneficial stochastic gradient noise, boosting slice accuracy by +2.54% while reducing GPU memory to just 2.5 GB
 - Testing an aggressive learning rate (0.01) led to divergence where loss flattened at 0.693 and the model collapsed to predicting 100% NC. Using a learning rate of 0.0005 established the optimal results (75.76% slice acc, 76.89% patient acc)
-- artitioning patients into 5 volumetric intensity quintiles completely eliminated train-validation distribution skew
+- Partitioning patients into 5 volumetric intensity quintiles completely eliminated train-validation distribution skew
 
 # The Open Research Dilemma
 
 Models frequently achieve deceptively high aggregate test accuracy while concealing overconfidence on borderline or ambiguous cases.
 In clinical screening, missing an early Alzheimer's case (false negative) is far more damaging than a routine false positive.
-
-
+  
 ## CNN vs ConvNeXt
 
 The ConvNeXt architecture was benchmarked against a simple CNN architecture, under identical splits and hyperparameters.
@@ -188,6 +190,7 @@ The final model was profiled and results were as follows.
 | Inference Latency | 1.30 ms/slice (26 ms/patient scan) |
 
 ## Error Autopsies
+  
 <p align="center">
  <img width="4560" height="2400" alt="convnext_sample_predictions" src="https://github.com/user-attachments/assets/833e3251-fd26-4396-8c64-427b2fca9829" />
  <img width="4560" height="2400" alt="convnext_misclassified_slices" src="https://github.com/user-attachments/assets/017ea31d-0c77-406f-9f60-97a3a6b84189" />
@@ -242,10 +245,10 @@ The inference script (`predict.py`) generates:
 - `convnext_sample_predictions.png`: 8-sample grid of correct diagnostic predictions.
 
 # References
-https://www.geeksforgeeks.org/computer-vision/convnext/
-https://arxiv.org/abs/2201.03545
-https://github.com/pytorch/vision/blob/main/torchvision/models/convnext.py
-https://www.mayoclinic.org/diseases-conditions/alzheimers-disease/symptoms-causes/syc-20350447
+GeeksForFeeks. (2025, July 15). ConvNeXt. Retrieved from GeeksForFeeks: https://www.geeksforgeeks.org/computer-vision/convnext/
+Liu, Z., Mao, H., Wu, C.-Y., Feichtenhofer, C., Darrell, T., & Xie, S. (2022). A ConvNet for the 2020s. Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , (pp. 11966–11976).
+Mayo Clinic Staff. (2026, August 1). Alzheimer's disease. Retrieved from Mayo Clinic: https://www.mayoclinic.org/diseases-conditions/alzheimers-disease/symptoms-causes/syc-20350447
+Pytorch. (2025, April 23). Vision. Retrieved from GitHub: https://github.com/pytorch/vision/blob/main/torchvision/models/convnext.py
 
 # AI Disclosure
 Google Gemini (3.8) was used to assit with the project.
