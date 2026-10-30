@@ -92,7 +92,7 @@ The model was trained using the following:
 - Cosine Annealing learning rate scheduler with linear warmup (10 epochs) 
 - Drop path: 0.1
 
-
+## Training Results
 
 [training curves image]
 
@@ -114,11 +114,15 @@ Although this is much lower than validation accuracy and loss, it can be explain
 
 [classification report]
 
+# The Open Research Dilemma
 
+## CNN vs ConvNeXt
 
+## Resource Profiling
 
-## Reproducibility
+## Error Autopsies
 
+## Actionable Engineering recommendation
 
 
 # Dependencies
@@ -132,7 +136,8 @@ torchvision >= 0.15.2
 numpy >= 1.24.3
 scikit-learn >= 1.3.0
 matplotlib >= 3.7.1
-pillow >= 9.5.0```
+pillow >= 9.5.0
+```
 
 ## Reproducibility
 
@@ -153,97 +158,13 @@ The inference script (`predict.py`) generates:
 - `convnext_misclassified_slices.png`: 8-sample qualitative failure case autopsy grid.
 - `convnext_sample_predictions.png`: 8-sample grid of correct diagnostic predictions.
 
+# References
+https://www.geeksforgeeks.org/computer-vision/convnext/
+https://arxiv.org/abs/2201.03545
+https://github.com/pytorch/vision/blob/main/torchvision/models/convnext.py
 
 # AI Disclosure
+AI was used to assist in building the dataloaders, ensure a patient level split and create a validation set uniformly by creating bins of the training set. It was then used to adapt the PyTorch ConvNeXt model and ensure alignment with the ConvNeXt paper.
+AI was also used to create plotting functions, evaluate accuracy at the patient level, determine computational profiling and implement argument parsing.
 
 
-
- Core Investigation: Does your chosen model architecture reliably quantify uncertainty on ambiguous
-boundary cases compared to a simple baseline? Does its predicted confidence score (or embedding
-metric distance) correlate with diagnostic correctness, or does the network remain stubbornly
-overconfident even when making incorrect predictions?
-• Engineering Recommendation: Establish an empirical confidence threshold or reject-option rule
-that safely automates high-confidence cases while routing ambiguous cases to human specialists.
-Does the added architectural complexity and computational cost of your advanced model justify its
-operational advantage over the baseline
-
-
- Data Hygiene & Leakage Prevention: Enforce strict patient-level separation for medical images
-(all slices/lesions from one patient reside strictly in one split). 
-
-Baseline Implementation & Comparison: Implement a simple baseline model (e.g., a standard
-convolutional network, MLP, or basic linear classifier) to establish an initial performance benchmark.
-You will compare your chosen model from the table below against this baseline on the same evaluation
-data.
-3. Quantitative Benchmarking: Evaluate beyond raw accuracy. Report per-class precision, recall,
-macro-F1, and AUROC. For severely imbalanced classes (melanoma), report Precision-Recall curves
-(PR-AUC). 
-
- Failure Case Autopsy & Manager Recommendation: Inspect 3–5 representative failure
-cases (false positives and false negatives) from the dataset to diagnose failure triggers. Propose a
-calibrated operating threshold or decision rule to route low-confidence predictions to human experts,
-and deliver an actionable recommendation to your project manager.
-
-# init readme 
-Sufficiently documenting your project, working principles, feasibility review, experiments, and instructions 
-
-# ConvNeXt for classification of Alzheimer's Diseases and Congitive Normal on 2D MRI brain slice scans
-
-# The algorithm
-
-
-
-a description of the algorithm and the problem that it solves (approximately a paragraph),
-how it works in a paragraph, and a figure/visualisation
-
-## The problem solved
-
-# Feasibility review
-
-# Dependencies
-dependencies required, including exact versions, and address reproducibility of results.
-
-## Reproducibility of results
-
-# Running the code
- Example inputs, outputs, and visual plots of your algorithm
-
-# Preprocessing
-Description of any specific pre-processing used, with references if any. Justify your training,
-validation, and testing splits of the data.
-
-# Open research dilemna 
-## CNN vs ConvNeXt
-Quantitative benchmarking of your chosen model against your implemented baseline model under
-identical evaluation splits
-
-## Resource profiling
-Resource profiling table documenting computational efficiency (peak GPU VRAM, parameter
-count, and inference runtime/latency).
-
-## Error autopsies
- In-depth qualitative error autopsies analyzing 3–5 representative failure cases from the dataset
-(diagnosing root triggers and failure modes).
-
-## Engineering recommendation
-Actionable engineering recommendation and trade-off synthesis
-
-# AI usage disclosure
-
-
-
-
-
-
-
-
-
-Augmentation Design & Justification:
-    - RandomRotation (degrees=5) & RandomAffine: Model natural patient head tilt and alignment
-      variations inside the MRI scanner bore without violating stereotaxic coordinate frames.
-    - ColorJitter (brightness=0.1, contrast=0.1): Simulates inter-scanner B0/B1 field inhomogeneities
-      and RF receive-coil sensitivity variations.
-    - RandomErasing (p=0.25): Acts as spatial dropout, encouraging the network to discover distributed
-      neurodegenerative biomarkers across both hemispheres and the ventricles.
-    - Strictly Prohibited: Vertical flipping is omitted because the superior-inferior anatomical axis
-      is fixed in clinical acquisition; inverting the brain introduces out-of-distribution artifacts.
