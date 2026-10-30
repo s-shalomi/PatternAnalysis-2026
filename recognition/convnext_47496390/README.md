@@ -33,7 +33,8 @@ The model used was the convnext-tiny variant.
 
 ### Architecture
 
-<img width="409" height="204" alt="Screenshot 2026-10-30 164945" src="https://github.com/user-attachments/assets/e72b6ce8-e558-464a-914b-5913160ea721" />  
+<img width="409" height="204" alt="Screenshot 2026-10-30 164945" src="https://github.com/user-attachments/assets/e72b6ce8-e558-464a-914b-5913160ea721" />   
+  
 *Figure 1: ConvNeXt architectural flow*
 
 Figure 1 shows the ConvNeXt architecture. MRI brain scans were passed into the network as input. It was then prepared for deeper processing by passing it through a 2D convolutional layer and layer normalisation (4x4 non-overlapping patchify convolution). 
@@ -96,7 +97,7 @@ The model was trained using the following:
 ## Training Results
 
 <img width="4200" height="1500" alt="convnext_training_curves" src="https://github.com/user-attachments/assets/5f25c17e-5da2-43cf-97e9-e60bdac6aea6" />
-  
+    
 *Figure 2: Cross-entropy loss (left) and classification accuracy (right) across 100 training epochs. The red dashed line denotes final test set performance.*
 
 Figure 2 shows loss and accuracy for training, validation and testing.
@@ -115,8 +116,17 @@ Although this is much lower than validation accuracy and loss, it can be explain
 
 <img width="1650" height="1440" alt="convnext_test_cm" src="https://github.com/user-attachments/assets/39679a69-fd67-4b7b-b62b-66d447d55cb7" />
 <img width="1800" height="1500" alt="convnext_test_roc" src="https://github.com/user-attachments/assets/576deda1-c102-4762-828c-1e6cff515b9d" />
-  
+    
 *Figure 3: Test confusion matrix (above) displaying high AD precision alongside conservative AD recall; ROC curve (below) demonstrating an AUROC of 0.8251.*
+
+**Classification Report**
+| Metric / Class | Precision | Recall (Sensitivity) | F1-Score | Support |
+| :--- | :---: | :---: | :---: | :---: |
+| NC | 0.7027 | 0.9491 | 0.8075 | 4,540 slices |
+| AD | 0.9195 | 0.5913 | 0.7197 | 4,460 slices |
+| Slice-Level Accuracy | — | — | 77.18%*| 9,000 slices |
+| Patient-Level Accuracy | — | — | 78.22% | 450 patients |
+| Test AUROC | — | — | 0.8251 | — |
 
 - AD precision refers to the number of scans with AD out of all scans the model flagged as having AD
 - AD recall refers to the number of scans identified as having AD (out of all scans that were AD)
@@ -169,17 +179,20 @@ When trained to full convergence (the current model) ConvNeXt performs significa
 
 ## Resource Profiling
 
-The final model was profiled and results were as follows:
-- Trainable Parameters: 27,818,594
-- Peak GPU VRAM: 2,523.50 MB
-- Training runtime: 7,621.16 s (127 min)
-- Inference latency: 1.30 ms / slice (26 ms / patient scan)
+The final model was profiled and results were as follows.
+| Metric | Value |
+|---|---:|
+| Trainable Parameters | 27,818,594 |
+| Peak GPU VRAM | 2,523.50 MB |
+| Training Runtime | 7,621.16 s (127 min) |
+| Inference Latency | 1.30 ms/slice (26 ms/patient scan) |
 
 ## Error Autopsies
 <p align="center">
  <img width="4560" height="2400" alt="convnext_sample_predictions" src="https://github.com/user-attachments/assets/833e3251-fd26-4396-8c64-427b2fca9829" />
  <img width="4560" height="2400" alt="convnext_misclassified_slices" src="https://github.com/user-attachments/assets/017ea31d-0c77-406f-9f60-97a3a6b84189" />
-</p>  
+</p>    
+  
 *Figure 4: Model failure cases (below) and sucessful predictions (above)*
   
 Figure 4 above compares the model’s failure cases (false positives and false negatives) against its successful predictions.
