@@ -320,11 +320,11 @@ Based on the results, each hyperparameter will be tuned.
 The model's detection of false positives and negatives will also be examined.
 
 # References
-GeeksForFeeks. (2025, July 15). ConvNeXt. Retrieved from GeeksForFeeks: https://www.geeksforgeeks.org/computer-vision/convnext/
-Liu, Z., Mao, H., Wu, C.-Y., Feichtenhofer, C., Darrell, T., & Xie, S. (2022). A ConvNet for the 2020s. Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , (pp. 11966–11976).
-Mayo Clinic Staff. (2026, August 1). Alzheimer's disease. Retrieved from Mayo Clinic: https://www.mayoclinic.org/diseases-conditions/alzheimers-disease/symptoms-causes/syc-20350447
-Pytorch. (2025, April 23). Vision. Retrieved from GitHub: https://github.com/pytorch/vision/blob/main/torchvision/models/convnext.py
-Reyes, D., & Sánchez, J. (2024). Performance of convolutional neural networks for the classification of brain tumors using magnetic resonance imaging. Heliyon, 10(3), e25468. https://doi.org/10.1016/j.heliyon.2024.e25468 
+GeeksForFeeks. (2025, July 15). ConvNeXt. Retrieved from GeeksForFeeks: https://www.geeksforgeeks.org/computer-vision/convnext/  
+Liu, Z., Mao, H., Wu, C.-Y., Feichtenhofer, C., Darrell, T., & Xie, S. (2022). A ConvNet for the 2020s. Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , (pp. 11966–11976).  
+Mayo Clinic Staff. (2026, August 1). Alzheimer's disease. Retrieved from Mayo Clinic: https://www.mayoclinic.org/diseases-conditions/alzheimers-disease/symptoms-causes/syc-20350447  
+Pytorch. (2025, April 23). Vision. Retrieved from GitHub: https://github.com/pytorch/vision/blob/main/torchvision/models/convnext.py  
+Reyes, D., & Sánchez, J. (2024). Performance of convolutional neural networks for the classification of brain tumors using magnetic resonance imaging. Heliyon, 10(3), e25468. https://doi.org/10.1016/j.heliyon.2024.e25468   
   
 # AI Disclosure
 Google Gemini (3.8) was used to assit with the project.
