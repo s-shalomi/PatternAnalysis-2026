@@ -33,7 +33,7 @@ The model used was the convnext-tiny variant.
 
 ### Architecture
 
-(<img width="409" height="204" alt="Screenshot 2026-10-30 164945" src="https://github.com/user-attachments/assets/e72b6ce8-e558-464a-914b-5913160ea721" />)
+<img width="409" height="204" alt="Screenshot 2026-10-30 164945" src="https://github.com/user-attachments/assets/e72b6ce8-e558-464a-914b-5913160ea721" />  
 *Figure 1: ConvNeXt architectural flow*
 
 Figure 1 shows the ConvNeXt architecture. MRI brain scans were passed into the network as input. It was then prepared for deeper processing by passing it through a 2D convolutional layer and layer normalisation (4x4 non-overlapping patchify convolution). 
@@ -95,8 +95,8 @@ The model was trained using the following:
 
 ## Training Results
 
-(<img width="4200" height="1500" alt="convnext_training_curves" src="https://github.com/user-attachments/assets/5f25c17e-5da2-43cf-97e9-e60bdac6aea6" />
-)
+<img width="4200" height="1500" alt="convnext_training_curves" src="https://github.com/user-attachments/assets/5f25c17e-5da2-43cf-97e9-e60bdac6aea6" />
+  
 *Figure 2: Cross-entropy loss (left) and classification accuracy (right) across 100 training epochs. The red dashed line denotes final test set performance.*
 
 Figure 2 shows loss and accuracy for training, validation and testing.
@@ -113,12 +113,10 @@ Although this is much lower than validation accuracy and loss, it can be explain
 - The test set may have a different distribution to the testing and validation sets
 - There may be a different class imbalance distribution between the test and training sets
 
-<p align="center">
-  <img src="<img width="1650" height="1440" alt="convnext_test_cm" src="https://github.com/user-attachments/assets/8b00bc34-11cd-4432-b351-cc051e699a18" />" 
-  <img src="<img width="1800" height="1500" alt="convnext_test_roc" src="https://github.com/user-attachments/assets/076caec9-0ad0-4afc-9dc0-3de8c41cae4f" />" 
-</p>
-
-*Figure 3: Test confusion matrix (left) displaying high AD precision alongside conservative AD recall; ROC curve (right) demonstrating an AUROC of 0.8251.*
+<img width="1650" height="1440" alt="convnext_test_cm" src="https://github.com/user-attachments/assets/39679a69-fd67-4b7b-b62b-66d447d55cb7" />
+<img width="1800" height="1500" alt="convnext_test_roc" src="https://github.com/user-attachments/assets/576deda1-c102-4762-828c-1e6cff515b9d" />
+  
+*Figure 3: Test confusion matrix (above) displaying high AD precision alongside conservative AD recall; ROC curve (below) demonstrating an AUROC of 0.8251.*
 
 - AD precision refers to the number of scans with AD out of all scans the model flagged as having AD
 - AD recall refers to the number of scans identified as having AD (out of all scans that were AD)
@@ -181,7 +179,7 @@ The final model was profiled and results were as follows:
 <p align="center">
  <img width="4560" height="2400" alt="convnext_sample_predictions" src="https://github.com/user-attachments/assets/833e3251-fd26-4396-8c64-427b2fca9829" />
  <img width="4560" height="2400" alt="convnext_misclassified_slices" src="https://github.com/user-attachments/assets/017ea31d-0c77-406f-9f60-97a3a6b84189" />
-</p>
+</p>  
 *Figure 4: Model failure cases (below) and sucessful predictions (above)*
   
 Figure 4 above compares the model’s failure cases (false positives and false negatives) against its successful predictions.
