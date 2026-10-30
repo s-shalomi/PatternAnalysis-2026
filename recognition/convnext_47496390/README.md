@@ -33,7 +33,7 @@ The model used was the convnext-tiny variant.
 
 ### Architecture
 
-![ConvNeXt Architecture](images/convnext_architecture.png)
+![ConvNeXt Architecture](<img width="409" height="204" alt="Screenshot 2026-10-30 164945" src="https://github.com/user-attachments/assets/e72b6ce8-e558-464a-914b-5913160ea721" />)
 *Figure 1: ConvNeXt architectural flow*
 
 Figure 1 shows the ConvNeXt architecture. MRI brain scans were passed into the network as input. It was then prepared for deeper processing by passing it through a 2D convolutional layer and layer normalisation (4x4 non-overlapping patchify convolution). 
@@ -95,7 +95,8 @@ The model was trained using the following:
 
 ## Training Results
 
-![Training and Validation Curves](/images/convnext_training_curves.png)
+![Training and Validation Curves](<img width="4200" height="1500" alt="convnext_training_curves" src="https://github.com/user-attachments/assets/5f25c17e-5da2-43cf-97e9-e60bdac6aea6" />
+)
 *Figure 2: Cross-entropy loss (left) and classification accuracy (right) across 100 training epochs. The red dashed line denotes final test set performance.*
 
 Figure 2 shows loss and accuracy for training, validation and testing.
@@ -112,9 +113,9 @@ Although this is much lower than validation accuracy and loss, it can be explain
 - The test set may have a different distribution to the testing and validation sets
 - There may be a different class imbalance distribution between the test and training sets
 
-p align="center">
-  <img src="/images/convnext_test_cm.png" width="48%" />
-  <img src="/images/convnext_test_roc.png" width="48%" />
+<p align="center">
+  <img src="<img width="1650" height="1440" alt="convnext_test_cm" src="https://github.com/user-attachments/assets/8b00bc34-11cd-4432-b351-cc051e699a18" />" width="48%" />
+  <img src="<img width="1800" height="1500" alt="convnext_test_roc" src="https://github.com/user-attachments/assets/076caec9-0ad0-4afc-9dc0-3de8c41cae4f" />" width="48%" />
 </p>
 
 *Figure 3: Test confusion matrix (left) displaying high AD precision alongside conservative AD recall; ROC curve (right) demonstrating an AUROC of 0.8251.*
@@ -152,16 +153,13 @@ The ConvNeXt architecture was benchmarked against a simple CNN architecture, und
 - Both models ran for 40 epochs and were trained using AdamW optimiser, cross entropy loss criterion (no label smoothing), a learning rate of 0.0001 and a batch size of 32.
 
 | Metric | CNN | ConvNeXt | Performance |
-| Training Runtime | 9.7 mins | 51.8 mins| ConvNeXt took 5.3x longer to train |  
-| Slice level test accuracy | 73.41% | 73.62% | Similar, but +0.21% under early 40-epoch training |
-| Test loss | 1.6831 | 1.1283 | ConvNeXt generalizes with 33% lower test loss |
-| AD precision | 86% | 82% | CNN is more conservative |
-| AD recall | 56% | 60% | 4% gain |
-| NC recall | 91% | 87% | |
-
-- AD precision refers to the number of scans with AD out of all scans the model flagged as having AD
-- AD recall refers to the number of scans identified as having AD (out of all scans that were AD)
-- NC recall refers to number of scans identified as NC (out of all NC scans)
+|---|---:|---:|---|
+| Training Runtime | 9.7 mins | 51.8 mins | ConvNeXt took 5.3× longer to train |
+| Slice-level Test Accuracy | 73.41% | 73.62% | Similar performance, with a +0.21% gain for ConvNeXt under early 40-epoch training |
+| Test Loss | 1.6831 | 1.1283 | ConvNeXt achieved 33% lower test loss |
+| AD Precision | 86% | 82% | CNN is more conservative |
+| AD Recall | 56% | 60% | ConvNeXt achieved a 4% gain |
+| NC Recall | 91% | 87% | CNN achieved a 4% gain |
 
 ConvNeXt is significantly larger than the CNN, so 40 epochs is insufficient for full convergence. 
 
@@ -180,13 +178,13 @@ The final model was profiled and results were as follows:
 - Inference latency: 1.30 ms / slice (26 ms / patient scan)
 
 ## Error Autopsies
+<p align="center">
+ <img width="4560" height="2400" alt="convnext_sample_predictions" src="https://github.com/user-attachments/assets/833e3251-fd26-4396-8c64-427b2fca9829" />
+ <img width="4560" height="2400" alt="convnext_misclassified_slices" src="https://github.com/user-attachments/assets/017ea31d-0c77-406f-9f60-97a3a6b84189" />
+</p>
+*Figure 4: Model failure cases (right) and sucessful predictions (left)*
 
-[misclassfied]
-
-[sample pred]
-
-The two figoures above compare the model’s failure cases (false positives and false negatives) against its successful predictions.
-
+Figure 4 above compares the model’s failure cases (false positives and false negatives) against its successful predictions.
 * Catastrophic Overconfidence on Incorrect Cases: In every misclassified case, the model predicted the incorrect label with extreme confidence (90.2% to 94.6% on False Positives; 93.6% to 95.0% on False Negatives). Standard softmax outputs completely fail to reflect diagnostic uncertainty on out-of-distribution slices.
 * False Positive Triggers (NC misdiagnosed as AD): Healthy elderly patients frequently exhibit normal age-related ventricular dilation (ex vacuo ventricular enlargement) and widened sulcal spaces. ConvNeXt keyed heavily into enlarged ventricular boundaries as an AD proxy, falsely categorizing these elderly normal cases as diseased with >94% confidence.
 * False Negative Triggers (AD misdiagnosed as NC): Slices taken from peripheral cranial cuts (extreme lateral or superior planes) lack the hippocampal formation and medial temporal lobes. Without visible atrophy signatures in these outer slices, ConvNeXt defaulted to NC with >93% confidence.
