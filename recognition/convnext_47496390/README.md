@@ -33,7 +33,8 @@ The model used was the convnext-tiny variant.
 
 ### Architecture
 
-[image]
+![ConvNeXt Architecture](images/convnext_architecture.png)
+*Figure 1: ConvNeXt architectural flow*
 
 Figure 1 shows the ConvNeXt architecture. MRI brain scans were passed into the network as input. It was then prepared for deeper processing by passing it through a 2D convolutional layer and layer normalisation (4x4 non-overlapping patchify convolution). 
 It was then passed through 4 ConvNeXt blocks, each designed to extract increasingly complex features. Downsampling layers in between each ConvNeXt block allow the model to find higher level patterns by reducing spatial dimensions and increasing feature channels. Finally, global average pooling and a linear classifier produce the final output.
@@ -94,9 +95,10 @@ The model was trained using the following:
 
 ## Training Results
 
-[training curves image]
+![Training and Validation Curves](/images/convnext_training_curves.png)
+*Figure 2: Cross-entropy loss (left) and classification accuracy (right) across 100 training epochs. The red dashed line denotes final test set performance.*
 
-Figure x shows loss and accuracy for training, validation and testing.
+Figure 2 shows loss and accuracy for training, validation and testing.
 
 Training loss drops to 0.23 from 0.69 and validation loss follows closely, dropping to 0.18 from 0.61. The variations in the validation loss can be explained by the batch size of 16, which causes noisy weight updates.
 Validation loss is lower than training loss because a dropout of 0.1 was used during training only.
@@ -110,20 +112,92 @@ Although this is much lower than validation accuracy and loss, it can be explain
 - The test set may have a different distribution to the testing and validation sets
 - There may be a different class imbalance distribution between the test and training sets
 
-[confusion matrix]
+p align="center">
+  <img src="/images/convnext_test_cm.png" width="48%" />
+  <img src="/images/convnext_test_roc.png" width="48%" />
+</p>
 
-[classification report]
+*Figure 3: Test confusion matrix (left) displaying high AD precision alongside conservative AD recall; ROC curve (right) demonstrating an AUROC of 0.8251.*
+
+- AD precision refers to the number of scans with AD out of all scans the model flagged as having AD
+- AD recall refers to the number of scans identified as having AD (out of all scans that were AD)
+- NC recall refers to number of scans identified as NC (out of all NC scans)
+- NC precision refers to the number of scans with NC out of all scans the model flagged as having NC
+- F1 score balances recall and precision to a value between 0 and 1
+
+AUROC tests the model across all possible decision cutoffs from 0% to 100%. A high AUROC score means that the model correctly ranks an Alzheimer's scan as higher risk than a healthy scan 82.5% of the time.
+
+The figures above show that the model is biased twoards predicting NC over AD, which is undesirable in clinical screening.
+Future work could include lowering the decision threshold for the AD class from 0.5 down to 0.3. 
+
+## Experimental iterations
+
+- Early runs used 3-channel replicated grayscale images and 40 epochs. While competitive, 3-channel input tripled memory bandwidth without adding new information. 
+- Testing label smoothing (0.1), DropPath (0.1, 0.2, 0.3), and spatial transforms demonstrated that ConvNeXt scales gracefully without overfitting over 300 epochs
+- Modifying the patch stem to 1 native grayscale channel eliminated redundant parameters
+- Adding linear warmup (3, 10 epochs) followed by cosine annealing decay stabilized feature learning. However, using batch size 128 consumed 17.7 GB VRAM and caused generalization degradation
+- Dropping batch size to 16 provided beneficial stochastic gradient noise, boosting slice accuracy by +2.54% while reducing GPU memory to just 2.5 GB
+- Testing an aggressive learning rate (0.01) led to divergence where loss flattened at 0.693 and the model collapsed to predicting 100% NC. Using a learning rate of 0.0005 established the optimal results (75.76% slice acc, 76.89% patient acc)
+- artitioning patients into 5 volumetric intensity quintiles completely eliminated train-validation distribution skew
 
 # The Open Research Dilemma
 
+Models frequently achieve deceptively high aggregate test accuracy while concealing overconfidence on borderline or ambiguous cases.
+In clinical screening, missing an early Alzheimer's case (false negative) is far more damaging than a routine false positive.
+
+
 ## CNN vs ConvNeXt
+
+The ConvNeXt architecture was benchmarked against a simple CNN architecture, under identical splits and hyperparameters.
+- Both models ran for 40 epochs and were trained using AdamW optimiser, cross entropy loss criterion (no label smoothing), a learning rate of 0.0001 and a batch size of 32.
+
+| Metric | CNN | ConvNeXt | Performance |
+| Training Runtime | 9.7 mins | 51.8 mins| ConvNeXt took 5.3x longer to train |  
+| Slice level test accuracy | 73.41% | 73.62% | Similar, but +0.21% under early 40-epoch training |
+| Test loss | 1.6831 | 1.1283 | ConvNeXt generalizes with 33% lower test loss |
+| AD precision | 86% | 82% | CNN is more conservative |
+| AD recall | 56% | 60% | 4% gain |
+| NC recall | 91% | 87% | |
+
+- AD precision refers to the number of scans with AD out of all scans the model flagged as having AD
+- AD recall refers to the number of scans identified as having AD (out of all scans that were AD)
+- NC recall refers to number of scans identified as NC (out of all NC scans)
+
+ConvNeXt is significantly larger than the CNN, so 40 epochs is insufficient for full convergence. 
+
+When trained to full convergence (the current model) ConvNeXt performs significantly better:
+- Slice Accuracy: Reaches 77.18% 
+- Patient-Level Accuracy: Reaches 78.22%: 
+- Test AUROC: Reaches 0.8251 
+- AD Precision: Reaches 91.95%, dramatically reducing false alarms 
 
 ## Resource Profiling
 
+The final model was profiled and results were as follows:
+- Trainable Parameters: 27,818,594
+- Peak GPU VRAM: 2,523.50 MB
+- Training runtime: 7,621.16 s (127 min)
+- Inference latency: 1.30 ms / slice (26 ms / patient scan)
+
 ## Error Autopsies
+
+[misclassfied]
+
+[sample pred]
+
+The two figoures above compare the model’s failure cases (false positives and false negatives) against its successful predictions.
+
+* Catastrophic Overconfidence on Incorrect Cases: In every misclassified case, the model predicted the incorrect label with extreme confidence (90.2% to 94.6% on False Positives; 93.6% to 95.0% on False Negatives). Standard softmax outputs completely fail to reflect diagnostic uncertainty on out-of-distribution slices.
+* False Positive Triggers (NC misdiagnosed as AD): Healthy elderly patients frequently exhibit normal age-related ventricular dilation (ex vacuo ventricular enlargement) and widened sulcal spaces. ConvNeXt keyed heavily into enlarged ventricular boundaries as an AD proxy, falsely categorizing these elderly normal cases as diseased with >94% confidence.
+* False Negative Triggers (AD misdiagnosed as NC): Slices taken from peripheral cranial cuts (extreme lateral or superior planes) lack the hippocampal formation and medial temporal lobes. Without visible atrophy signatures in these outer slices, ConvNeXt defaulted to NC with >93% confidence.
+* Scanner Inhomogeneity & Partial Volume Effects: Variations in white-to-gray matter contrast ratios misled the patch stem tokenization on boundary slices.
 
 ## Actionable Engineering recommendation
 
+For clinical screening, based on AD probability:
+- High confidence NC cases should be logged without specialist intervention
+- High confidence AD cases should be re-routed for specialist confirmation
+- Borderline cases should be rerouted for specialist review
 
 # Dependencies
 All experiements were conducted on GPUs on the Rangpur cluster.
@@ -162,9 +236,11 @@ The inference script (`predict.py`) generates:
 https://www.geeksforgeeks.org/computer-vision/convnext/
 https://arxiv.org/abs/2201.03545
 https://github.com/pytorch/vision/blob/main/torchvision/models/convnext.py
+https://www.mayoclinic.org/diseases-conditions/alzheimers-disease/symptoms-causes/syc-20350447
 
 # AI Disclosure
-AI was used to assist in building the dataloaders, ensure a patient level split and create a validation set uniformly by creating bins of the training set. It was then used to adapt the PyTorch ConvNeXt model and ensure alignment with the ConvNeXt paper.
-AI was also used to create plotting functions, evaluate accuracy at the patient level, determine computational profiling and implement argument parsing.
-
-
+Google Gemini (3.8) was used to assit with the project.
+Gemini was used to assist in building the dataloaders, ensure a patient level split and create a validation set uniformly by creating bins of the training set. It was then used to adapt the PyTorch ConvNeXt model and ensure alignment with the ConvNeXt paper.
+Gemini was also used to create plotting functions, evaluate accuracy at the patient level, determine computational profiling and implement argument parsing.
+Gemini was used to understand the slice images and autopsy them. Gemini was also used to create markdown tables.
+All AI generated code was verified.
