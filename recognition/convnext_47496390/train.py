@@ -443,7 +443,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default="convnext", choices=["convnext", "cnn"],
                         help="Model architecture: 'convnext' or 'cnn' (default: convnext)")
     parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs (default: 100)")
-    parser.add_argument("--batch_size", type=int, default=128, help="Batch size for training/eval (default: 16)")
+    parser.add_argument("--batch_size", type=int, default=128, help="Batch size for training/eval (default: 128)")
     parser.add_argument("--lr", type=float, default=1e-4, help="Peak learning rate (default: 1e-4)")
     parser.add_argument("--weight_decay", type=float, default=0.05, help="AdamW weight decay (default: 0.05)")
     parser.add_argument("--data_root", type=str, default="/home/groups/comp3710/ADNI/AD_NC",

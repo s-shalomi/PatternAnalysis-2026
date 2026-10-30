@@ -3,11 +3,14 @@ ADNI 2D MRI Slice Data Pipeline and Leakage-Free Splitting.
 Contains:
     - ADNISliceDataset: PyTorch Dataset for loading single-channel 2D MRI slices.
     - get_transforms: Domain-appropriate augmentation pipeline (rotation, affine, jitter, erasing).
-    - build_dataloaders: Patient-level stratified train/val/test dataloader builder ensuring zero-leakage cross-patient separation.
+    - build_dataloaders: Patient-level stratified train/val/test dataloader builder ensuring zero-leakage cross-patient separation
+     and uniform validation distribution coverage across volumetric pixel-level intensity quintiles..
 """
 
 import os
 import glob
+import json
+import random
 from collections import defaultdict
 from PIL import Image
 from sklearn.model_selection import train_test_split
@@ -75,6 +78,40 @@ def get_transforms(in_channels=1):
 
     return train_transform, val_transform
 
+def compute_patient_mean_intensities(patient_slices, cache_path=None):
+    """
+    Computes volumetric mean pixel intensity per patient across representative slices.
+    Caches computed values to JSON to provide instantaneous O(1) startup on subsequent runs.
+    """
+    if cache_path and os.path.exists(cache_path):
+        try:
+            with open(cache_path, "r") as fp:
+                cached = json.load(fp)
+                if len(cached) == len(patient_slices):
+                    return cached
+        except Exception:
+            pass
+    patient_intensities = {}
+    for pid, flist in patient_slices.items():
+        # Sample 5 evenly distributed slices across the 20-slice volume for speed and precision
+        sample_slices = flist[:: max(1, len(flist) // 5)]
+        slice_means = []
+        for f in sample_slices:
+            try:
+                img = Image.open(f).convert('L')
+                t = transforms.functional.to_tensor(img)  # Tensor in [0.0, 1.0]
+                slice_means.append(t.mean().item() * 255.0)  # Scale [0, 255]
+            except Exception:
+                continue
+        patient_intensities[pid] = float(sum(slice_means) / len(slice_means)) if slice_means else 0.0
+    if cache_path:
+        try:
+            with open(cache_path, "w") as fp:
+                json.dump(patient_intensities, fp)
+        except Exception:
+            pass
+    return patient_intensities
+
 
 def build_dataloaders(
     in_channels=1,
@@ -93,6 +130,8 @@ def build_dataloaders(
     classes = {'NC': 0, 'AD': 1}
     train_dir = os.path.join(data_root, 'train')
     test_dir = os.path.join(data_root, 'test')
+    
+    num_bins = 5
 
     if not os.path.exists(train_dir):
         raise FileNotFoundError(f"Training directory not found at: {train_dir}")
@@ -116,17 +155,56 @@ def build_dataloaders(
             patient_slices[patient_id].append(file_path)
             patient_label[patient_id] = cls_idx
 
-    unique_patients = list(patient_slices.keys())
-    patient_labels = [patient_label[pid] for pid in unique_patients]
+    # Pixel-Level Volumetric Intensity Computation
+    cache_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "patient_intensity_cache.json")
+    if not os.path.exists(cache_file) and os.path.exists("patient_intensity_cache.json"):
+        cache_file = "patient_intensity_cache.json"
+    
+    patient_intensities = compute_patient_mean_intensities(patient_slices, cache_path=cache_file)
+    
+    # Binned Stratified Split Across Intensity Quintiles
+    rng = random.Random(seed)
+    train_patients, val_patients = [], []
 
-    # Patient-level Stratified split ensures balanced AD/NC ratio in train and val sets
-    train_patients, val_patients = train_test_split(
-        unique_patients,
-        test_size=val_split,
-        stratify=patient_labels,
-        random_state=seed
-    )
+    print(f"\n--- Binned Validation Partitioning ({num_bins} Bins) ---")
 
+    for cls_name, cls_idx in classes.items():
+        cls_pids = [pid for pid, l in patient_label.items() if l == cls_idx]
+        # Sort by volumetric mean pixel intensity [0 - 255]
+        cls_pids = sorted(cls_pids, key=lambda p: patient_intensities.get(p, 0.0))
+        
+        n_pids = len(cls_pids)
+
+        effective_bins = max(1, min(num_bins, n_pids))
+        bin_size = n_pids / effective_bins
+
+        print(f"Class {cls_name} ({n_pids} patients) partitioned into {effective_bins} bins:")
+        
+        for b in range(effective_bins):
+            start_idx = int(round(b * bin_size))
+            end_idx = int(round((b + 1) * bin_size))
+            bin_pids = cls_pids[start_idx:end_idx]
+            
+            # Deterministically shuffle bin before sampling
+            shuffled_bin = list(bin_pids)
+            rng.shuffle(shuffled_bin)
+            
+            # Draw exactly val_split fraction from this bin
+            n_val = int(round(len(shuffled_bin) * val_split))
+            val_p = shuffled_bin[:n_val]
+            train_p = shuffled_bin[n_val:]
+            
+            val_patients.extend(val_p)
+            train_patients.extend(train_p)
+
+            b_vals = [patient_intensities.get(p, 0.0) for p in bin_pids]
+            print(f"  Bin {b}: Intensity [{min(b_vals):.2f}, {max(b_vals):.2f}] (mean={sum(b_vals)/len(b_vals):.2f}) -> Train: {len(train_p)}, Val: {len(val_p)}")
+
+    # Verify mathematical separation: strictly zero leakage
+    leakage = set(train_patients).intersection(set(val_patients))
+    if leakage:
+        raise ValueError(f"CRITICAL ERROR: Patient leakage detected in train/val split: {leakage}")
+    
     # Flatten patient slices back into slice lists with patient ID tracking
     train_paths, train_labels, train_pids = [], [], []
     for pid in train_patients:
@@ -142,9 +220,7 @@ def build_dataloaders(
             val_labels.append(patient_label[pid])
             val_pids.append(pid)
 
-    # ---------------------------------------------------------
-    # 2. Collect test slices
-    # ---------------------------------------------------------
+    # Collect test slices
     test_paths, test_labels, test_pids = [], [], []
     test_patient_set = set()
 
@@ -158,14 +234,18 @@ def build_dataloaders(
             test_pids.append(patient_id)
             test_patient_set.add(patient_id)
 
-    print(f"ADNI Dataset Summary (Strict Patient-Level Partitioning):")
+    # Check for train/test leakage
+    all_train_val_patients = set(train_patients).union(set(val_patients))
+    test_leakage = all_train_val_patients.intersection(test_patient_set)
+    if test_leakage:
+        raise ValueError(f"CRITICAL ERROR: Patient leakage detected between train/val and test: {test_leakage}")
+    
+    print(f"\nADNI Dataset Summary (Strict Patient-Level Partitioning):")
     print(f"  Train: {len(train_paths):>6} slices from {len(train_patients):>4} unique patients")
     print(f"  Val:   {len(val_paths):>6} slices from {len(val_patients):>4} unique patients")
-    print(f"  Test:  {len(test_paths):>6} slices from {len(test_patient_set):>4} unique patients")
+    print(f"  Test:  {len(test_paths):>6} slices from {len(test_patient_set):>4} unique patients\n")
 
-    # ---------------------------------------------------------
-    # 3. Create datasets and loaders
-    # ---------------------------------------------------------
+    # Create datasets and loaders
     train_tf, val_tf = get_transforms(in_channels=in_channels)
     
     train_dataset = ADNISliceDataset(train_paths, train_labels, transform=train_tf, patient_ids=train_pids)
